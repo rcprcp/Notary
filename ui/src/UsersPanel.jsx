@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Group, Modal, PasswordInput, Stack, Table, Text, TextInput, Title } from '@mantine/core'
 import { usersApi } from './api'
 
-const EMPTY_FORM = { name: '', email: '', password: '' }
+const EMPTY_FORM = { name: '', email: '', password: '', passwordConfirm: '' }
 
 export default function UsersPanel() {
   const [users, setUsers] = useState([])
@@ -33,7 +33,7 @@ export default function UsersPanel() {
 
   const openEdit = (user) => {
     setEditingId(user.id)
-    setForm({ name: user.name, email: user.email, password: '' })
+    setForm({ name: user.name, email: user.email, password: '', passwordConfirm: '' })
     setOpened(true)
   }
 
@@ -41,6 +41,11 @@ export default function UsersPanel() {
     const isEdit = editingId !== null
     if (!form.name.trim() || !form.email.trim() || (!isEdit && !form.password)) {
       setError(isEdit ? 'Name and email are required' : 'Name, email and password are required')
+      return
+    }
+    // If password is provided, confirm it matches
+    if (form.password && form.password !== form.passwordConfirm) {
+      setError('Passwords do not match')
       return
     }
     setSaving(true)
@@ -51,7 +56,7 @@ export default function UsersPanel() {
         if (form.password) body.password = form.password
         await usersApi.update(editingId, body)
       } else {
-        await usersApi.create(form)
+        await usersApi.create({ name: form.name, email: form.email, password: form.password })
       }
       setOpened(false)
       setError(null)
@@ -144,6 +149,12 @@ export default function UsersPanel() {
             required={!editingId}
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.currentTarget.value })}
+          />
+          <PasswordInput
+            label={editingId ? 'Confirm new password' : 'Confirm password'}
+            required={form.password !== ''}
+            value={form.passwordConfirm}
+            onChange={(e) => setForm({ ...form, passwordConfirm: e.currentTarget.value })}
           />
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setOpened(false)}>Cancel</Button>
