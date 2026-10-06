@@ -3,6 +3,7 @@ import { Button, Container, Group, Title } from '@mantine/core'
 import UsersPanel from './UsersPanel'
 import NotesPanel from './NotesPanel'
 import OpenApiButton from './OpenApiButton'
+import ThemeButton from './ThemeButton'
 
 const PAGES = [
   { path: '/users', label: 'Users', element: <UsersPanel /> },
@@ -11,14 +12,17 @@ const PAGES = [
 
 // Single-page app shell: the header/nav stay mounted; only the routed view is
 // swapped in place on navigation, with no full page reloads.
-function App() {
+function App({ onThemeChange }) {
   const { pathname } = useLocation()
 
   return (
     <Container size="lg" py="xl">
       <Group justify="space-between" mb="lg">
         <Title order={1}>Notary</Title>
-        <OpenApiButton />
+        <Group gap="sm">
+          <ThemeButton onThemeChange={onThemeChange} />
+          <OpenApiButton />
+        </Group>
       </Group>
 
       <Group mb="md" component="nav">
