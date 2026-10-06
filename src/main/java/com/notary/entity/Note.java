@@ -1,5 +1,6 @@
 package com.notary.entity;
 
+import io.quarkus.panache.common.Sort;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -17,7 +18,8 @@ public class Note extends BaseEntity {
     @Column(name = "content", nullable = false, length = 10485760)
     public String content;
 
+    /** Notes of one owner (by user UUID), newest first. */
     public static List<Note> findByOwner(UUID ownerId) {
-        return list("ownerId", ownerId);
+        return list("ownerId", Sort.descending("createdAt"), ownerId);
     }
 }

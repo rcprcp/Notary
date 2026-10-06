@@ -15,7 +15,6 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
-import java.util.List;
 import java.util.UUID;
 
 @Path("/api/notes")
@@ -26,10 +25,14 @@ public class NoteResource {
     /** Request body. ownerId is required on create and ignored on update. */
     public record NoteRequest(UUID ownerId, String content) {}
 
-    /** List all notes, or only those of one owner with ?ownerId=... */
+    /** List one user's notes (by user UUID), newest first. ownerId is required. */
     @GET
-    public List<Note> list(@QueryParam("ownerId") UUID ownerId) {
-        return ownerId == null ? Note.listAll() : Note.findByOwner(ownerId);
+    public Response list(@QueryParam("ownerId") UUID ownerId) {
+        if (ownerId == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("ownerId is required").build();
+        }
+        return Response.ok(Note.findByOwner(ownerId)).build();
     }
 
     @GET

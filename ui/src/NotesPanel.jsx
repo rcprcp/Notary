@@ -1,68 +1,104 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Group, Modal, Select, Stack, Table, Text, Textarea, Title } from '@mantine/core'
+import { Alert, Button, Group, Modal, Select, Stack, Table, Text, Textarea, Title, UnstyledButton } from '@mantine/core'
+import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react'
 import { notesApi, usersApi } from './api'
-
-const EMPTY_FORM = { ownerId: null, content: '' }
 
 function preview(text, max = 80) {
   if (!text) return ''
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
-export default function NotesPanel() {
+// Clickable, sortable column header.
+function SortableTh({ label, field, sort, onSort }) {
+  const active = sort.field === field
+  const Icon = !active ? IconSelector : sort.dir === 'asc' ? IconChevronUp : IconChevronDown
+  return (
+    <Table.Th aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <UnstyledButton onClick={() => onSort(field)}>
+        <Group gap={4} wrap="nowrap">
+          <Text fw={600} size="sm">{label}</Text>
+          <Icon size={14} />
+        </Group>
+      </UnstyledButton>
+    </Table.Th>
+  )
+}
+
+// Notes of one user (selected by UUID), newest first by default.
+// `currentUserId` is the "Acting as" user from the header; it is the default owner.
+export default function NotesPanel({ currentUserId }) {
   const [notes, setNotes] = useState([])
   const [users, setUsers] = useState([])
-  const [filterOwner, setFilterOwner] = useState(null)
+  const [ownerId, setOwnerId] = useState(currentUserId ?? null)
+  const [sort, setSort] = useState({ field: 'createdAt', dir: 'desc' })
   const [error, setError] = useState(null)
   const [opened, setOpened] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Follow the header's "Acting as" user.
+  useEffect(() => {
+    setOwnerId(currentUserId ?? null)
+  }, [currentUserId])
 
   const userOptions = useMemo(
     () => users.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
     [users],
   )
-  const userNames = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u.name])), [users])
 
   const load = useCallback(async () => {
     try {
-      const [u, n] = await Promise.all([usersApi.list(), notesApi.list(filterOwner)])
-      setUsers(u)
-      setNotes(n)
+      setUsers(await usersApi.list())
+      // Only ever fetch the selected user's notes, by UUID.
+      setNotes(ownerId ? await notesApi.list(ownerId) : [])
       setError(null)
     } catch (e) {
       setError(`Failed to load notes: ${e.message}`)
     }
-  }, [filterOwner])
+  }, [ownerId])
 
   useEffect(() => {
     load()
   }, [load])
 
+  const toggleSort = (field) =>
+    setSort((s) =>
+      s.field === field ? { field, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { field, dir: field === 'content' ? 'asc' : 'desc' },
+    )
+
+  const sortedNotes = useMemo(() => {
+    const factor = sort.dir === 'asc' ? 1 : -1
+    const value = (n) => {
+      if (sort.field === 'content') return (n.content || '').toLowerCase()
+      return new Date(n[sort.field]).getTime()
+    }
+    return [...notes].sort((a, b) => {
+      const x = value(a)
+      const y = value(b)
+      return x < y ? -factor : x > y ? factor : 0
+    })
+  }, [notes, sort])
+
   const openCreate = () => {
     setEditingId(null)
-    setForm({ ownerId: filterOwner, content: '' })
+    setContent('')
     setOpened(true)
   }
 
   const openEdit = (note) => {
     setEditingId(note.id)
-    setForm({ ownerId: note.ownerId, content: note.content })
+    setContent(note.content)
     setOpened(true)
   }
 
   const save = async () => {
-    if (!form.ownerId) {
-      setError('Please choose an owner')
-      return
-    }
     setSaving(true)
     try {
       if (editingId) {
-        await notesApi.update(editingId, { content: form.content })
+        await notesApi.update(editingId, { content })
       } else {
-        await notesApi.create({ ownerId: form.ownerId, content: form.content })
+        await notesApi.create({ ownerId, content })
       }
       setOpened(false)
       setError(null)
@@ -91,21 +127,16 @@ export default function NotesPanel() {
         <Title order={2}>Notes</Title>
         <Group>
           <Select
-            placeholder="All owners"
-            clearable
+            placeholder="Select a user"
             data={userOptions}
-            value={filterOwner}
-            onChange={setFilterOwner}
+            value={ownerId}
+            onChange={setOwnerId}
             w={260}
           />
-          <Button variant="default" onClick={load}>Refresh</Button>
-          <Button onClick={openCreate} disabled={users.length === 0}>New note</Button>
+          <Button variant="default" onClick={load} disabled={!ownerId}>Refresh</Button>
+          <Button onClick={openCreate} disabled={!ownerId}>New note</Button>
         </Group>
       </Group>
-
-      {users.length === 0 && (
-        <Alert color="yellow">Create a user first; every note needs an owner.</Alert>
-      )}
 
       {error && (
         <Alert color="red" withCloseButton onClose={() => setError(null)}>
@@ -113,23 +144,23 @@ export default function NotesPanel() {
         </Alert>
       )}
 
-      {notes.length === 0 ? (
-        <Text c="dimmed">No notes found.</Text>
+      {!ownerId ? (
+        <Text c="dimmed">Select a user to see their notes.</Text>
+      ) : sortedNotes.length === 0 ? (
+        <Text c="dimmed">This user has no notes yet.</Text>
       ) : (
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Owner</Table.Th>
-              <Table.Th>Content</Table.Th>
-              <Table.Th>Created</Table.Th>
-              <Table.Th>Updated</Table.Th>
+              <SortableTh label="Content" field="content" sort={sort} onSort={toggleSort} />
+              <SortableTh label="Created" field="createdAt" sort={sort} onSort={toggleSort} />
+              <SortableTh label="Updated" field="updatedAt" sort={sort} onSort={toggleSort} />
               <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {notes.map((n) => (
+            {sortedNotes.map((n) => (
               <Table.Tr key={n.id}>
-                <Table.Td>{userNames[n.ownerId] ?? <Text size="xs" ff="monospace">{n.ownerId}</Text>}</Table.Td>
                 <Table.Td>{preview(n.content)}</Table.Td>
                 <Table.Td>{new Date(n.createdAt).toLocaleString()}</Table.Td>
                 <Table.Td>{new Date(n.updatedAt).toLocaleString()}</Table.Td>
@@ -152,22 +183,13 @@ export default function NotesPanel() {
         size="lg"
       >
         <Stack>
-          <Select
-            label="Owner"
-            required
-            data={userOptions}
-            value={form.ownerId}
-            onChange={(v) => setForm({ ...form, ownerId: v })}
-            disabled={editingId !== null}
-            description={editingId ? 'The owner of an existing note cannot be changed' : undefined}
-          />
           <Textarea
             label="Content"
             autosize
             minRows={6}
             maxRows={20}
-            value={form.content}
-            onChange={(e) => setForm({ ...form, content: e.currentTarget.value })}
+            value={content}
+            onChange={(e) => setContent(e.currentTarget.value)}
           />
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setOpened(false)}>Cancel</Button>

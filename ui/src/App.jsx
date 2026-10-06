@@ -7,8 +7,8 @@ import ThemeButton from './ThemeButton'
 import CurrentUserSelect from './CurrentUserSelect'
 
 const PAGES = [
-  { path: '/users', label: 'Users', element: <UsersPanel /> },
-  { path: '/notes', label: 'Notes', element: <NotesPanel /> },
+  { path: '/users', label: 'Users' },
+  { path: '/notes', label: 'Notes' },
 ]
 
 // Single-page app shell: the header/nav stay mounted; only the routed view is
@@ -42,9 +42,8 @@ function App({ themeColor, onThemeChange, currentUserId, onUserChange }) {
 
       <Routes>
         <Route path="/" element={<Navigate to="/users" replace />} />
-        {PAGES.map((p) => (
-          <Route key={p.path} path={p.path} element={p.element} />
-        ))}
+        <Route path="/users" element={<UsersPanel />} />
+        <Route path="/notes" element={<NotesPanel currentUserId={currentUserId} />} />
         <Route path="*" element={<Navigate to="/users" replace />} />
       </Routes>
     </Container>
