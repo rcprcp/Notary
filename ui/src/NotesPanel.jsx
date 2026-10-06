@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Group, Modal, Select, Stack, Table, Text, Textarea, Title, UnstyledButton } from '@mantine/core'
+import { Alert, Button, Group, Modal, Select, Stack, Table, Text, TextInput, Textarea, Title, UnstyledButton } from '@mantine/core'
 import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react'
 import { notesApi, usersApi } from './api'
+
+const EMPTY_FORM = { title: '', content: '' }
 
 function preview(text, max = 80) {
   if (!text) return ''
@@ -24,6 +26,8 @@ function SortableTh({ label, field, sort, onSort }) {
   )
 }
 
+const TEXT_FIELDS = ['title', 'content']
+
 // Notes of one user (selected by UUID), newest first by default.
 // `currentUserId` is the "Acting as" user from the header; it is the default owner.
 export default function NotesPanel({ currentUserId }) {
@@ -32,9 +36,10 @@ export default function NotesPanel({ currentUserId }) {
   const [ownerId, setOwnerId] = useState(currentUserId ?? null)
   const [sort, setSort] = useState({ field: 'createdAt', dir: 'desc' })
   const [error, setError] = useState(null)
+  const [formError, setFormError] = useState(null)
   const [opened, setOpened] = useState(false)
-  const [editingId, setEditingId] = useState(null)
-  const [content, setContent] = useState('')
+  const [editingNote, setEditingNote] = useState(null)
+  const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
 
   // Follow the header's "Acting as" user.
@@ -64,15 +69,17 @@ export default function NotesPanel({ currentUserId }) {
 
   const toggleSort = (field) =>
     setSort((s) =>
-      s.field === field ? { field, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { field, dir: field === 'content' ? 'asc' : 'desc' },
+      s.field === field
+        ? { field, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+        : { field, dir: TEXT_FIELDS.includes(field) ? 'asc' : 'desc' },
     )
 
   const sortedNotes = useMemo(() => {
     const factor = sort.dir === 'asc' ? 1 : -1
-    const value = (n) => {
-      if (sort.field === 'content') return (n.content || '').toLowerCase()
-      return new Date(n[sort.field]).getTime()
-    }
+    const value = (n) =>
+      TEXT_FIELDS.includes(sort.field)
+        ? (n[sort.field] || '').toLowerCase()
+        : new Date(n[sort.field]).getTime()
     return [...notes].sort((a, b) => {
       const x = value(a)
       const y = value(b)
@@ -81,24 +88,38 @@ export default function NotesPanel({ currentUserId }) {
   }, [notes, sort])
 
   const openCreate = () => {
-    setEditingId(null)
-    setContent('')
+    setEditingNote(null)
+    setForm(EMPTY_FORM)
+    setFormError(null)
     setOpened(true)
   }
 
+  // Selecting a note shows both its title and content for editing.
   const openEdit = (note) => {
-    setEditingId(note.id)
-    setContent(note.content)
+    setEditingNote(note)
+    setForm({ title: note.title || '', content: note.content || '' })
+    setFormError(null)
     setOpened(true)
   }
 
   const save = async () => {
+    if (!form.title.trim()) {
+      setFormError('Title is required')
+      return
+    }
+    setFormError(null)
     setSaving(true)
     try {
-      if (editingId) {
-        await notesApi.update(editingId, { content })
+      if (editingNote) {
+        // Send only the fields that were modified.
+        const body = {}
+        if (form.title.trim() !== (editingNote.title || '')) body.title = form.title.trim()
+        if (form.content !== editingNote.content) body.content = form.content
+        if (Object.keys(body).length > 0) {
+          await notesApi.update(editingNote.id, body)
+        }
       } else {
-        await notesApi.create({ ownerId, content })
+        await notesApi.create({ ownerId, title: form.title.trim(), content: form.content })
       }
       setOpened(false)
       setError(null)
@@ -111,7 +132,7 @@ export default function NotesPanel({ currentUserId }) {
   }
 
   const remove = async (note) => {
-    if (!window.confirm('Delete this note?')) return
+    if (!window.confirm(`Delete note "${note.title || 'Untitled'}"?`)) return
     try {
       await notesApi.remove(note.id)
       setError(null)
@@ -152,6 +173,7 @@ export default function NotesPanel({ currentUserId }) {
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead>
             <Table.Tr>
+              <SortableTh label="Title" field="title" sort={sort} onSort={toggleSort} />
               <SortableTh label="Content" field="content" sort={sort} onSort={toggleSort} />
               <SortableTh label="Created" field="createdAt" sort={sort} onSort={toggleSort} />
               <SortableTh label="Updated" field="updatedAt" sort={sort} onSort={toggleSort} />
@@ -160,14 +182,15 @@ export default function NotesPanel({ currentUserId }) {
           </Table.Thead>
           <Table.Tbody>
             {sortedNotes.map((n) => (
-              <Table.Tr key={n.id}>
+              <Table.Tr key={n.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(n)}>
+                <Table.Td>{n.title || <Text c="dimmed" fs="italic">Untitled</Text>}</Table.Td>
                 <Table.Td>{preview(n.content)}</Table.Td>
                 <Table.Td>{new Date(n.createdAt).toLocaleString()}</Table.Td>
                 <Table.Td>{new Date(n.updatedAt).toLocaleString()}</Table.Td>
                 <Table.Td>
                   <Group gap="xs" wrap="nowrap">
-                    <Button size="xs" variant="light" onClick={() => openEdit(n)}>Edit</Button>
-                    <Button size="xs" variant="light" color="red" onClick={() => remove(n)}>Delete</Button>
+                    <Button size="xs" variant="light" onClick={(e) => { e.stopPropagation(); openEdit(n) }}>Edit</Button>
+                    <Button size="xs" variant="light" color="red" onClick={(e) => { e.stopPropagation(); remove(n) }}>Delete</Button>
                   </Group>
                 </Table.Td>
               </Table.Tr>
@@ -179,21 +202,29 @@ export default function NotesPanel({ currentUserId }) {
       <Modal
         opened={opened}
         onClose={() => setOpened(false)}
-        title={editingId ? 'Edit note' : 'New note'}
+        title={editingNote ? 'Edit note' : 'New note'}
         size="lg"
       >
         <Stack>
+          <TextInput
+            label="Title"
+            required
+            maxLength={255}
+            value={form.title}
+            error={formError}
+            onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
+          />
           <Textarea
             label="Content"
             autosize
             minRows={6}
             maxRows={20}
-            value={content}
-            onChange={(e) => setContent(e.currentTarget.value)}
+            value={form.content}
+            onChange={(e) => setForm({ ...form, content: e.currentTarget.value })}
           />
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setOpened(false)}>Cancel</Button>
-            <Button onClick={save} loading={saving}>{editingId ? 'Update' : 'Create'}</Button>
+            <Button onClick={save} loading={saving}>{editingNote ? 'Update' : 'Create'}</Button>
           </Group>
         </Stack>
       </Modal>

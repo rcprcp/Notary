@@ -14,6 +14,9 @@ public class Note extends BaseEntity {
     @Column(name = "owner_id", nullable = false)
     public UUID ownerId;
 
+    @Column(name = "title", nullable = false, length = 255)
+    public String title = "";
+
     /** Text blob; PostgreSQL's maximum VARCHAR length is 10485760. */
     @Column(name = "content", nullable = false, length = 10485760)
     public String content;
