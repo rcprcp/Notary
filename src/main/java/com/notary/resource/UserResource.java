@@ -15,6 +15,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Path("/api/users")
@@ -22,8 +23,13 @@ import java.util.UUID;
 @Consumes(MediaType.APPLICATION_JSON)
 public class UserResource {
 
+    /** Mantine color palettes selectable in the UI. */
+    private static final Set<String> THEME_COLORS = Set.of(
+            "dark", "gray", "red", "pink", "grape", "violet", "indigo", "blue",
+            "cyan", "teal", "green", "lime", "yellow", "orange");
+
     /** Request body for create/update. For update, every field is optional. */
-    public record UserRequest(String name, String email, String password) {}
+    public record UserRequest(String name, String email, String password, String themeColor) {}
 
     @GET
     public List<User> list() {
@@ -44,6 +50,9 @@ public class UserResource {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("name, email and password are required").build();
         }
+        if (!isBlank(req.themeColor()) && !THEME_COLORS.contains(req.themeColor())) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("invalid themeColor").build();
+        }
         if (User.findByEmail(req.email()) != null) {
             return Response.status(Response.Status.CONFLICT).entity("email already in use").build();
         }
@@ -51,6 +60,9 @@ public class UserResource {
         user.name = req.name();
         user.email = req.email();
         user.passwordHash = BcryptUtil.bcryptHash(req.password());
+        if (!isBlank(req.themeColor())) {
+            user.themeColor = req.themeColor();
+        }
         user.persist();
         return Response.created(URI.create("/api/users/" + user.id)).entity(user).build();
     }
@@ -66,6 +78,9 @@ public class UserResource {
         if (req == null) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
+        if (!isBlank(req.themeColor()) && !THEME_COLORS.contains(req.themeColor())) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("invalid themeColor").build();
+        }
         if (!isBlank(req.email()) && !req.email().equals(user.email)) {
             if (User.findByEmail(req.email()) != null) {
                 return Response.status(Response.Status.CONFLICT).entity("email already in use").build();
@@ -77,6 +92,9 @@ public class UserResource {
         }
         if (!isBlank(req.password())) {
             user.passwordHash = BcryptUtil.bcryptHash(req.password());
+        }
+        if (!isBlank(req.themeColor())) {
+            user.themeColor = req.themeColor();
         }
         return Response.ok(user).build();
     }

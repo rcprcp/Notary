@@ -12,7 +12,9 @@ async function request(path, options = {}) {
     } catch (e) {
       // ignore body read errors
     }
-    throw new Error(message)
+    const err = new Error(message)
+    err.status = res.status
+    throw err
   }
   if (res.status === 204) return null
   const text = await res.text()
@@ -21,6 +23,7 @@ async function request(path, options = {}) {
 
 export const usersApi = {
   list: () => request('/api/users'),
+  get: (id) => request(`/api/users/${id}`),
   create: (user) => request('/api/users', { method: 'POST', body: JSON.stringify(user) }),
   update: (id, user) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(user) }),
   remove: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),

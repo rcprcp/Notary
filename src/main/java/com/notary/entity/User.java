@@ -9,6 +9,8 @@ import jakarta.persistence.Table;
 @Table(name = "users")
 public class User extends BaseEntity {
 
+    public static final String DEFAULT_THEME_COLOR = "blue";
+
     @Column(name = "name", nullable = false)
     public String name;
 
@@ -18,6 +20,10 @@ public class User extends BaseEntity {
     @JsonIgnore
     @Column(name = "password_hash", nullable = false)
     public String passwordHash;
+
+    /** Mantine primary color name chosen by the user in the UI. */
+    @Column(name = "theme_color", nullable = false, length = 32)
+    public String themeColor = DEFAULT_THEME_COLOR;
 
     public static User findByEmail(String email) {
         return find("email", email).firstResult();

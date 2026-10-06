@@ -4,6 +4,7 @@ import UsersPanel from './UsersPanel'
 import NotesPanel from './NotesPanel'
 import OpenApiButton from './OpenApiButton'
 import ThemeButton from './ThemeButton'
+import CurrentUserSelect from './CurrentUserSelect'
 
 const PAGES = [
   { path: '/users', label: 'Users', element: <UsersPanel /> },
@@ -12,7 +13,7 @@ const PAGES = [
 
 // Single-page app shell: the header/nav stay mounted; only the routed view is
 // swapped in place on navigation, with no full page reloads.
-function App({ onThemeChange }) {
+function App({ themeColor, onThemeChange, currentUserId, onUserChange }) {
   const { pathname } = useLocation()
 
   return (
@@ -20,7 +21,8 @@ function App({ onThemeChange }) {
       <Group justify="space-between" mb="lg">
         <Title order={1}>Notary</Title>
         <Group gap="sm">
-          <ThemeButton onThemeChange={onThemeChange} />
+          <CurrentUserSelect value={currentUserId} onChange={onUserChange} />
+          <ThemeButton value={themeColor} onThemeChange={onThemeChange} />
           <OpenApiButton />
         </Group>
       </Group>

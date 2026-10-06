@@ -1,33 +1,16 @@
 import { useState } from 'react'
-import { Button, Group, Modal, SimpleGrid } from '@mantine/core'
-import { MANTINE_COLORS } from '@mantine/core'
+import { Button, Modal, SimpleGrid } from '@mantine/core'
 
 const THEME_COLORS = [
-  'blue',
-  'cyan',
-  'grape',
-  'gray',
-  'green',
-  'indigo',
-  'lime',
-  'orange',
-  'pink',
-  'red',
-  'teal',
-  'violet',
-  'yellow',
-  'dark',
+  'dark', 'gray', 'red', 'pink', 'grape', 'violet', 'indigo',
+  'blue', 'cyan', 'teal', 'green', 'lime', 'yellow', 'orange',
 ]
 
-export default function ThemeButton({ onThemeChange }) {
+// `value` is the active color; `onThemeChange` persists/applies a new one.
+export default function ThemeButton({ value, onThemeChange }) {
   const [opened, setOpened] = useState(false)
-  const [activeTheme, setActiveTheme] = useState(() => {
-    return localStorage.getItem('notary-theme-color') || 'blue'
-  })
 
-  const handleSelectTheme = (color) => {
-    setActiveTheme(color)
-    localStorage.setItem('notary-theme-color', color)
+  const select = (color) => {
     onThemeChange(color)
     setOpened(false)
   }
@@ -37,22 +20,18 @@ export default function ThemeButton({ onThemeChange }) {
       <Button variant="outline" onClick={() => setOpened(true)}>Theme</Button>
 
       <Modal opened={opened} onClose={() => setOpened(false)} title="Select color theme">
-        <SimpleGrid cols={4} gap="md">
-          {THEME_COLORS.map((color) => {
-            const colorValue = MANTINE_COLORS[color]?.[6] || '#000000'
-            return (
-              <Button
-                key={color}
-                onClick={() => handleSelectTheme(color)}
-                variant={activeTheme === color ? 'filled' : 'light'}
-                color={color}
-                fullWidth
-                styles={{ root: { textTransform: 'capitalize' } }}
-              >
-                {color}
-              </Button>
-            )
-          })}
+        <SimpleGrid cols={3} spacing="sm">
+          {THEME_COLORS.map((color) => (
+            <Button
+              key={color}
+              color={color}
+              variant={value === color ? 'filled' : 'light'}
+              onClick={() => select(color)}
+              styles={{ root: { textTransform: 'capitalize' } }}
+            >
+              {color}
+            </Button>
+          ))}
         </SimpleGrid>
       </Modal>
     </>
