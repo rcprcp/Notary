@@ -1,11 +1,15 @@
-import { Container, Tabs, Title } from '@mantine/core'
+import { Container, Group, Tabs, Title } from '@mantine/core'
 import UsersPanel from './UsersPanel'
 import NotesPanel from './NotesPanel'
+import OpenApiButton from './OpenApiButton'
 
 function App() {
   return (
     <Container size="lg" py="xl">
-      <Title order={1} mb="lg">Notary</Title>
+      <Group justify="space-between" mb="lg">
+        <Title order={1}>Notary</Title>
+        <OpenApiButton />
+      </Group>
       <Tabs defaultValue="users" keepMounted={false}>
         <Tabs.List mb="md">
           <Tabs.Tab value="users">Users</Tabs.Tab>
