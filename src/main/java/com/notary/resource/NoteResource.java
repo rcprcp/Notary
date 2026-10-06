@@ -2,6 +2,9 @@ package com.notary.resource;
 
 import com.notary.entity.Note;
 import com.notary.entity.User;
+import jakarta.inject.Inject;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -11,10 +14,11 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 
 @Path("/api/notes")
@@ -22,42 +26,62 @@ import java.util.UUID;
 @Consumes(MediaType.APPLICATION_JSON)
 public class NoteResource {
 
-    /**
-     * Request body. ownerId is required on create and ignored on update.
-     * On update, title and content are each optional; only provided fields change.
-     */
-    public record NoteRequest(UUID ownerId, String title, String content) {}
+    @Context
+    HttpServletRequest request;
 
-    /** List one user's notes (by user UUID), newest first. ownerId is required. */
+    /** Request body. ownerId is ignored; owner is always the authenticated user. */
+    public record NoteRequest(String title, String content) {}
+
+    /** Get the authenticated user from the session. Returns null if not logged in. */
+    private User getAuthenticatedUser() {
+        HttpSession session = request.getSession(false);
+        if (session == null) return null;
+        UUID userId = (UUID) session.getAttribute("userId");
+        if (userId == null) return null;
+        return User.findById(userId);
+    }
+
+    /** List authenticated user's notes, newest first. */
     @GET
-    public Response list(@QueryParam("ownerId") UUID ownerId) {
-        if (ownerId == null) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("ownerId is required").build();
+    public Response list() {
+        User user = getAuthenticatedUser();
+        if (user == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
         }
-        return Response.ok(Note.findByOwner(ownerId)).build();
+        List<Note> notes = Note.find("ownerId", user.id)
+                .sort("createdAt desc")
+                .list();
+        return Response.ok(notes).build();
     }
 
     @GET
     @Path("/{id}")
     public Response get(@PathParam("id") UUID id) {
+        User user = getAuthenticatedUser();
+        if (user == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
         Note note = Note.findById(id);
-        return note == null ? Response.status(Response.Status.NOT_FOUND).build() : Response.ok(note).build();
+        if (note == null || !note.ownerId.equals(user.id)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        return Response.ok(note).build();
     }
 
     @POST
     @Transactional
     public Response create(NoteRequest req) {
-        if (req == null || req.ownerId() == null || req.content() == null
-                || req.title() == null || req.title().isBlank()) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("ownerId, title and content are required").build();
+        User user = getAuthenticatedUser();
+        if (user == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
         }
-        if (User.findById(req.ownerId()) == null) {
-            return Response.status(Response.Status.BAD_REQUEST).entity("owner does not exist").build();
+        if (req == null || req.title() == null || req.content() == null
+                || req.title().isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("title and content are required").build();
         }
         Note note = new Note();
-        note.ownerId = req.ownerId();
+        note.ownerId = user.id;
         note.title = req.title().trim();
         note.content = req.content();
         note.persist();
@@ -68,8 +92,12 @@ public class NoteResource {
     @Path("/{id}")
     @Transactional
     public Response update(@PathParam("id") UUID id, NoteRequest req) {
+        User user = getAuthenticatedUser();
+        if (user == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
         Note note = Note.findById(id);
-        if (note == null) {
+        if (note == null || !note.ownerId.equals(user.id)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         if (req == null || (req.title() == null && req.content() == null)) {
@@ -92,7 +120,15 @@ public class NoteResource {
     @Path("/{id}")
     @Transactional
     public Response delete(@PathParam("id") UUID id) {
-        return Note.deleteById(id)
+        User user = getAuthenticatedUser();
+        if (user == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+        Note note = Note.findById(id);
+        if (note == null || !note.ownerId.equals(user.id)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        return note.delete() > 0
                 ? Response.noContent().build()
                 : Response.status(Response.Status.NOT_FOUND).build();
     }

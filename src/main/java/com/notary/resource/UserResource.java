@@ -1,7 +1,11 @@
 package com.notary.resource;
 
+import com.notary.entity.Note;
 import com.notary.entity.User;
 import io.quarkus.elytron.security.common.BcryptUtil;
+import jakarta.inject.Inject;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -11,6 +15,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
@@ -29,22 +34,29 @@ public class UserResource {
             "dark", "gray", "red", "pink", "grape", "violet", "indigo", "blue",
             "cyan", "teal", "green", "lime", "yellow", "orange");
 
+    @Context
+    HttpServletRequest request;
+
     /** Request body for create/update. For update, every field is optional. */
     public record UserRequest(String name, String email, String password, String themeColor) {}
 
     /** Request body for login. */
     public record LoginRequest(String email, String password) {}
 
-    @GET
-    public List<User> list() {
-        return User.listAll();
+    /** Get the authenticated user from the session. Returns null if not logged in. */
+    private User getAuthenticatedUser() {
+        HttpSession session = request.getSession(false);
+        if (session == null) return null;
+        UUID userId = (UUID) session.getAttribute("userId");
+        if (userId == null) return null;
+        return User.findById(userId);
     }
 
     @GET
-    @Path("/{id}")
-    public Response get(@PathParam("id") UUID id) {
-        User user = User.findById(id);
-        return user == null ? Response.status(Response.Status.NOT_FOUND).build() : Response.ok(user).build();
+    @Path("/me")
+    public Response getCurrentUser() {
+        User user = getAuthenticatedUser();
+        return user == null ? Response.status(Response.Status.UNAUTHORIZED).build() : Response.ok(user).build();
     }
 
     @POST
@@ -61,7 +73,20 @@ public class UserResource {
                     .entity("invalid email or password").build();
         }
         user.lastLogin = Instant.now();
+        // Create session and store user ID
+        HttpSession session = request.getSession(true);
+        session.setAttribute("userId", user.id);
         return Response.ok(user).build();
+    }
+
+    @POST
+    @Path("/logout")
+    public Response logout() {
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+        return Response.noContent().build();
     }
 
     @POST
@@ -91,12 +116,30 @@ public class UserResource {
         return Response.created(URI.create("/api/users/" + user.id)).entity(user).build();
     }
 
+    @GET
+    @Path("/{id}")
+    public Response get(@PathParam("id") UUID id) {
+        User caller = getAuthenticatedUser();
+        if (caller == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+        // Can only view your own user record
+        if (!caller.id.equals(id)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        return Response.ok(caller).build();
+    }
+
     @PUT
     @Path("/{id}")
     @Transactional
     public Response update(@PathParam("id") UUID id, UserRequest req) {
-        User user = User.findById(id);
-        if (user == null) {
+        User caller = getAuthenticatedUser();
+        if (caller == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+        // Can only update your own user record
+        if (!caller.id.equals(id)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         if (req == null) {
@@ -105,31 +148,39 @@ public class UserResource {
         if (!isBlank(req.themeColor()) && !THEME_COLORS.contains(req.themeColor())) {
             return Response.status(Response.Status.BAD_REQUEST).entity("invalid themeColor").build();
         }
-        if (!isBlank(req.name()) && !req.name().equals(user.name)) {
+        if (!isBlank(req.name()) && !req.name().equals(caller.name)) {
             if (User.findByName(req.name()) != null) {
                 return Response.status(Response.Status.CONFLICT).entity("name already in use").build();
             }
-            user.name = req.name();
+            caller.name = req.name();
         }
-        if (!isBlank(req.email()) && !req.email().equals(user.email)) {
+        if (!isBlank(req.email()) && !req.email().equals(caller.email)) {
             if (User.findByEmail(req.email()) != null) {
                 return Response.status(Response.Status.CONFLICT).entity("email already in use").build();
             }
-            user.email = req.email();
+            caller.email = req.email();
         }
         if (!isBlank(req.password())) {
-            user.passwordHash = BcryptUtil.bcryptHash(req.password());
+            caller.passwordHash = BcryptUtil.bcryptHash(req.password());
         }
         if (!isBlank(req.themeColor())) {
-            user.themeColor = req.themeColor();
+            caller.themeColor = req.themeColor();
         }
-        return Response.ok(user).build();
+        return Response.ok(caller).build();
     }
 
     @DELETE
     @Path("/{id}")
     @Transactional
     public Response delete(@PathParam("id") UUID id) {
+        User caller = getAuthenticatedUser();
+        if (caller == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+        // Can only delete your own user record
+        if (!caller.id.equals(id)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
         return User.deleteById(id)
                 ? Response.noContent().build()
                 : Response.status(Response.Status.NOT_FOUND).build();

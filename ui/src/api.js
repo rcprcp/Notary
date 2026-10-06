@@ -1,7 +1,9 @@
 // Small fetch wrapper for the Quarkus REST API.
+// Credentials (cookies) are included automatically.
 async function request(path, options = {}) {
   const res = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...options,
   })
   if (!res.ok) {
@@ -22,15 +24,17 @@ async function request(path, options = {}) {
 }
 
 export const usersApi = {
-  list: () => request('/api/users'),
-  get: (id) => request(`/api/users/${id}`),
+  getCurrentUser: () => request('/api/users/me'),
+  login: (email, password) => request('/api/users/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  logout: () => request('/api/users/logout', { method: 'POST' }),
   create: (user) => request('/api/users', { method: 'POST', body: JSON.stringify(user) }),
   update: (id, user) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(user) }),
   remove: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),
 }
 
 export const notesApi = {
-  list: (ownerId) => request(ownerId ? `/api/notes?ownerId=${encodeURIComponent(ownerId)}` : '/api/notes'),
+  list: () => request('/api/notes'),
+  get: (id) => request(`/api/notes/${id}`),
   create: (note) => request('/api/notes', { method: 'POST', body: JSON.stringify(note) }),
   update: (id, note) => request(`/api/notes/${id}`, { method: 'PUT', body: JSON.stringify(note) }),
   remove: (id) => request(`/api/notes/${id}`, { method: 'DELETE' }),

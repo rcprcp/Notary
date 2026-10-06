@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Group, Modal, Select, Stack, Table, Text, TextInput, Textarea, Title, UnstyledButton } from '@mantine/core'
 import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react'
-import { notesApi, usersApi } from './api'
+import { notesApi } from './api'
 
 const EMPTY_FORM = { title: '', content: '' }
 
@@ -23,12 +23,9 @@ function SortableTh({ label, field, sort, onSort }) {
 
 const TEXT_FIELDS = ['title']
 
-// Notes of one user (selected by UUID), newest first by default.
-// `currentUserId` is the "Acting as" user from the header; it is the default owner.
-export default function NotesPanel({ currentUserId }) {
+// Notes of the authenticated user. No owner selection needed.
+export default function NotesPanel() {
   const [notes, setNotes] = useState([])
-  const [users, setUsers] = useState([])
-  const [ownerId, setOwnerId] = useState(currentUserId ?? null)
   const [sort, setSort] = useState({ field: 'createdAt', dir: 'desc' })
   const [error, setError] = useState(null)
   const [formError, setFormError] = useState(null)
@@ -37,26 +34,18 @@ export default function NotesPanel({ currentUserId }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
 
-  // Follow the header's "Acting as" user.
-  useEffect(() => {
-    setOwnerId(currentUserId ?? null)
-  }, [currentUserId])
-
-  const userOptions = useMemo(
-    () => users.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` })),
-    [users],
-  )
-
   const load = useCallback(async () => {
     try {
-      setUsers(await usersApi.list())
-      // Only ever fetch the selected user's notes, by UUID.
-      setNotes(ownerId ? await notesApi.list(ownerId) : [])
+      setNotes(await notesApi.list())
       setError(null)
     } catch (e) {
-      setError(`Failed to load notes: ${e.message}`)
+      if (e.status === 401) {
+        setError('Session expired. Please login again.')
+      } else {
+        setError(`Failed to load notes: ${e.message}`)
+      }
     }
-  }, [ownerId])
+  }, [])
 
   useEffect(() => {
     load()
@@ -114,13 +103,17 @@ export default function NotesPanel({ currentUserId }) {
           await notesApi.update(editingNote.id, body)
         }
       } else {
-        await notesApi.create({ ownerId, title: form.title.trim(), content: form.content })
+        await notesApi.create({ title: form.title.trim(), content: form.content })
       }
       setOpened(false)
       setError(null)
       await load()
     } catch (e) {
-      setError(`Failed to save note: ${e.message}`)
+      if (e.status === 401) {
+        setError('Session expired. Please login again.')
+      } else {
+        setError(`Failed to save note: ${e.message}`)
+      }
     } finally {
       setSaving(false)
     }
@@ -133,7 +126,11 @@ export default function NotesPanel({ currentUserId }) {
       setError(null)
       await load()
     } catch (e) {
-      setError(`Failed to delete note: ${e.message}`)
+      if (e.status === 401) {
+        setError('Session expired. Please login again.')
+      } else {
+        setError(`Failed to delete note: ${e.message}`)
+      }
     }
   }
 
@@ -142,15 +139,8 @@ export default function NotesPanel({ currentUserId }) {
       <Group justify="space-between">
         <Title order={2}>Notes</Title>
         <Group>
-          <Select
-            placeholder="Select a user"
-            data={userOptions}
-            value={ownerId}
-            onChange={setOwnerId}
-            w={260}
-          />
-          <Button variant="default" onClick={load} disabled={!ownerId}>Refresh</Button>
-          <Button onClick={openCreate} disabled={!ownerId}>New note</Button>
+          <Button variant="default" onClick={load}>Refresh</Button>
+          <Button onClick={openCreate}>New note</Button>
         </Group>
       </Group>
 
@@ -160,10 +150,8 @@ export default function NotesPanel({ currentUserId }) {
         </Alert>
       )}
 
-      {!ownerId ? (
-        <Text c="dimmed">Select a user to see their notes.</Text>
-      ) : sortedNotes.length === 0 ? (
-        <Text c="dimmed">This user has no notes yet.</Text>
+      {notes.length === 0 ? (
+        <Text c="dimmed">You have no notes yet.</Text>
       ) : (
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead>

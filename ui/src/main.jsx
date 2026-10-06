@@ -7,56 +7,69 @@ import { usersApi } from './api'
 import '@mantine/core/styles.css'
 
 const THEME_KEY = 'notary-theme-color'
-const USER_KEY = 'notary-current-user'
 
-// SPA shell. The theme is stored in the current user's record on the server
-// (users.theme_color); localStorage is only a cache / fallback when no user is selected.
+// SPA shell. Session is managed via HttpOnly cookies.
 function Root() {
   const [themeColor, setThemeColor] = useState(() => localStorage.getItem(THEME_KEY) || 'blue')
-  const [currentUserId, setCurrentUserId] = useState(() => localStorage.getItem(USER_KEY))
+  const [currentUser, setCurrentUser] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const applyTheme = (color) => {
-    setThemeColor(color)
-    localStorage.setItem(THEME_KEY, color)
-  }
-
-  // Select a user and load their saved theme from the server.
-  const selectUser = useCallback(async (id) => {
-    setCurrentUserId(id)
-    if (!id) {
-      localStorage.removeItem(USER_KEY)
-      return
-    }
-    localStorage.setItem(USER_KEY, id)
-    try {
-      const user = await usersApi.get(id)
-      if (user?.themeColor) applyTheme(user.themeColor)
-    } catch (e) {
-      if (e.status === 404) {
-        // The remembered user no longer exists.
-        setCurrentUserId(null)
-        localStorage.removeItem(USER_KEY)
-      } else {
-        console.error('Failed to load user theme', e)
+  // Check if user is already logged in (session cookie exists)
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const user = await usersApi.getCurrentUser()
+        setCurrentUser(user)
+        if (user?.themeColor) {
+          setThemeColor(user.themeColor)
+        }
+      } catch (e) {
+        // Not logged in or session expired
+        setCurrentUser(null)
+      } finally {
+        setIsLoading(false)
       }
     }
+    checkSession()
   }, [])
 
-  // On first load, restore the remembered user's theme from the server.
-  useEffect(() => {
-    const id = localStorage.getItem(USER_KEY)
-    if (id) selectUser(id)
-  }, [selectUser])
-
-  // Apply immediately, then persist to the current user's record (if any).
-  const changeTheme = async (color) => {
-    applyTheme(color)
-    if (!currentUserId) return
+  const handleLogin = async () => {
     try {
-      await usersApi.update(currentUserId, { themeColor: color })
+      const user = await usersApi.getCurrentUser()
+      setCurrentUser(user)
+      if (user?.themeColor) {
+        setThemeColor(user.themeColor)
+      }
+    } catch (e) {
+      console.error('Failed to load user after login', e)
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await usersApi.logout()
+    } catch (e) {
+      console.error('Logout error', e)
+    }
+    setCurrentUser(null)
+  }
+
+  // Apply immediately, then persist to the current user's record.
+  const changeTheme = async (color) => {
+    setThemeColor(color)
+    localStorage.setItem(THEME_KEY, color)
+    if (!currentUser) return
+    try {
+      await usersApi.update(currentUser.id, { themeColor: color })
+      // Update local state
+      setCurrentUser({ ...currentUser, themeColor: color })
     } catch (e) {
       console.error('Failed to save theme to user record', e)
     }
+  }
+
+  if (isLoading) {
+    return <div>Loading...</div>
   }
 
   return (
@@ -65,8 +78,9 @@ function Root() {
         <App
           themeColor={themeColor}
           onThemeChange={changeTheme}
-          currentUserId={currentUserId}
-          onUserChange={selectUser}
+          currentUser={currentUser}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
         />
       </HashRouter>
     </MantineProvider>
