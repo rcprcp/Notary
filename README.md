@@ -24,7 +24,8 @@ Notary/
 │               ├── V1.0.1__add_theme_color_to_users.sql
 │               ├── V1.0.2__add_title_to_notes.sql
 │               ├── V1.0.3__add_last_login_to_users.sql
-│               └── V1.0.4__add_superuser_to_users.sql
+│               ├── V1.0.4__add_superuser_to_users.sql
+│               └── V1.0.5__insert_initial_user.sql
 ├── ui/                                        # React + Vite frontend
 │   ├── src/
 │   │   ├── App.jsx                            # Main app shell with routing and logout
@@ -68,7 +69,7 @@ mvn quarkus:dev
 
 The backend will run on `http://localhost:8080`.
 
-Flyway will automatically create/migrate the schema on startup.
+Flyway will automatically create/migrate the schema on startup and insert an initial test user.
 
 ### 3. Frontend Setup (React + Vite)
 
@@ -90,7 +91,22 @@ The frontend dev server will run on `http://localhost:3000` and proxy API calls 
 
 Open your browser to **`http://localhost:3000`**.
 
-You will see a login page. Create an account or use existing credentials to log in.
+You will see a login page. Use the initial test user credentials below or create a new account.
+
+### Initial Test User
+
+When the database is first created, an initial test user is automatically inserted:
+
+- **Email:** mickey@mickey.com
+- **Password:** mickey
+- **Name:** mickey
+- **Superuser:** ❌ No (regular user only)
+
+This account has regular user permissions. It can create, view, and manage only its own notes. To give this user superuser access, use `psql`:
+
+```sql
+UPDATE users SET superuser = TRUE WHERE email = 'mickey@mickey.com';
+```
 
 ## Database Schema
 
