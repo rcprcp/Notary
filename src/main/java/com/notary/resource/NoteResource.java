@@ -1,76 +1,82 @@
 package com.notary.resource;
 
 import com.notary.entity.Note;
+import com.notary.entity.User;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.*;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import java.time.LocalDateTime;
+import java.net.URI;
 import java.util.List;
+import java.util.UUID;
 
 @Path("/api/notes")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class NoteResource {
 
+    /** Request body. ownerId is required on create and ignored on update. */
+    public record NoteRequest(UUID ownerId, String content) {}
+
+    /** List all notes, or only those of one owner with ?ownerId=... */
     @GET
-    public List<Note> getAllNotes() {
-        return Note.listAll();
+    public List<Note> list(@QueryParam("ownerId") UUID ownerId) {
+        return ownerId == null ? Note.listAll() : Note.findByOwner(ownerId);
     }
 
     @GET
     @Path("/{id}")
-    public Response getNoteById(@PathParam("id") Long id) {
+    public Response get(@PathParam("id") UUID id) {
         Note note = Note.findById(id);
-        if (note == null) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-        return Response.ok(note).build();
+        return note == null ? Response.status(Response.Status.NOT_FOUND).build() : Response.ok(note).build();
     }
 
     @POST
     @Transactional
-    public Response createNote(Note note) {
-        if (note.title == null || note.title.trim().isEmpty()) {
-            return Response.status(Response.Status.BAD_REQUEST).entity("Title is required").build();
+    public Response create(NoteRequest req) {
+        if (req == null || req.ownerId() == null || req.content() == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("ownerId and content are required").build();
         }
-        note.createdAt = LocalDateTime.now();
-        note.updatedAt = LocalDateTime.now();
+        if (User.findById(req.ownerId()) == null) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("owner does not exist").build();
+        }
+        Note note = new Note();
+        note.ownerId = req.ownerId();
+        note.content = req.content();
         note.persist();
-        return Response.status(Response.Status.CREATED).entity(note).build();
+        return Response.created(URI.create("/api/notes/" + note.id)).entity(note).build();
     }
 
     @PUT
     @Path("/{id}")
     @Transactional
-    public Response updateNote(@PathParam("id") Long id, Note updatedNote) {
+    public Response update(@PathParam("id") UUID id, NoteRequest req) {
         Note note = Note.findById(id);
         if (note == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        if (updatedNote.title != null) {
-            note.title = updatedNote.title;
+        if (req == null || req.content() == null) {
+            return Response.status(Response.Status.BAD_REQUEST).entity("content is required").build();
         }
-        if (updatedNote.content != null) {
-            note.content = updatedNote.content;
-        }
-        if (updatedNote.author != null) {
-            note.author = updatedNote.author;
-        }
-        note.updatedAt = LocalDateTime.now();
-        note.persist();
+        note.content = req.content();
         return Response.ok(note).build();
     }
 
     @DELETE
     @Path("/{id}")
     @Transactional
-    public Response deleteNote(@PathParam("id") Long id) {
-        Note note = Note.findById(id);
-        if (note == null) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-        note.delete();
-        return Response.status(Response.Status.NO_CONTENT).build();
+    public Response delete(@PathParam("id") UUID id) {
+        return Note.deleteById(id)
+                ? Response.noContent().build()
+                : Response.status(Response.Status.NOT_FOUND).build();
     }
 }
