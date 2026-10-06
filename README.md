@@ -6,23 +6,29 @@ A modern note-taking application built with **Quarkus** (Java 17), **Panache ORM
 
 ```
 Notary/
-├── pom.xml                          # Maven configuration with Java 17 and Quarkus
+├── pom.xml                                    # Maven configuration with Java 17 and Quarkus
 ├── src/
 │   └── main/
-│       ├── java/com/notary/         # Java backend code
-│       │   ├── entity/              # JPA entities (Note, BaseEntity)
-│       │   ├── resource/            # REST endpoints
-│       │   └── NotaryApplication.java
+│       ├── java/com/notary/
+│       │   ├── entity/
+│       │   │   ├── BaseEntity.java            # Base class with UUID id and timestamps
+│       │   │   ├── User.java                  # User entity
+│       │   │   └── Note.java                  # Note (text blob) entity
+│       │   └── resource/
+│       │       ├── UserResource.java          # REST endpoints for users
+│       │       └── NoteResource.java          # REST endpoints for notes
 │       └── resources/
-│           └── application.properties # Quarkus and DB config
-├── ui/                              # React + Vite frontend
+│           ├── application.properties         # Quarkus config (DB, Flyway, OpenAPI)
+│           └── db/migration/
+│               └── V1.0.0__create_users_and_notes.sql  # Flyway schema
+├── ui/                                        # React + Vite frontend
 │   ├── src/
-│   │   ├── App.jsx                  # Main React component
-│   │   ├── main.jsx                 # React entry point
-│   │   └── index.css                # Styles
-│   ├── vite.config.js               # Vite configuration
-│   ├── index.html                   # HTML template
-│   └── package.json                 # Node dependencies
+│   │   ├── App.jsx                            # Main React component
+│   │   ├── main.jsx                           # React entry point
+│   │   └── index.css                          # Styles
+│   ├── vite.config.js                         # Vite configuration
+│   ├── index.html                             # HTML template
+│   └── package.json                           # Node dependencies
 └── README.md
 ```
 
@@ -57,6 +63,8 @@ mvn quarkus:dev
 
 The backend will run on `http://localhost:8080`.
 
+Flyway will automatically create the schema on startup.
+
 ### 3. Frontend Setup (React + Vite)
 
 ```bash
@@ -71,13 +79,59 @@ npm run dev
 
 The frontend will run on `http://localhost:3000` and proxy API calls to the backend.
 
+## Database Schema
+
+### `users` Table
+- `id` (UUID, primary key)
+- `name` (VARCHAR 255, required)
+- `email` (VARCHAR 320, unique, required)
+- `password_hash` (VARCHAR 255, BCrypt hashed, never returned in API responses)
+- `created_at` (TIMESTAMP, set on insert)
+- `updated_at` (TIMESTAMP, auto-updated on modification)
+
+### `notes` Table
+- `id` (UUID, primary key)
+- `owner_id` (UUID, foreign key → users.id, ON DELETE CASCADE)
+- `content` (VARCHAR 10485760, max PostgreSQL VARCHAR length)
+- `created_at` (TIMESTAMP, set on insert)
+- `updated_at` (TIMESTAMP, auto-updated on modification)
+
+Indexed on `owner_id` for efficient owner-based queries.
+
 ## API Endpoints
 
-- `GET /api/notes` - List all notes
-- `GET /api/notes/{id}` - Get a specific note
-- `POST /api/notes` - Create a new note
-- `PUT /api/notes/{id}` - Update a note
-- `DELETE /api/notes/{id}` - Delete a note
+### Users
+
+- `GET /api/users` – List all users
+- `GET /api/users/{id}` – Get a specific user (by UUID)
+- `POST /api/users` – Create a new user
+  - **Request body:** `{ "name": "...", "email": "...", "password": "..." }`
+  - **Response:** User object (password hash is not returned)
+- `PUT /api/users/{id}` – Update a user (all fields optional)
+  - **Request body:** `{ "name": "...", "email": "...", "password": "..." }`
+- `DELETE /api/users/{id}` – Delete a user (cascades to owned notes)
+
+### Notes
+
+- `GET /api/notes` – List all notes
+- `GET /api/notes?ownerId={uuid}` – List notes by owner
+- `GET /api/notes/{id}` – Get a specific note (by UUID)
+- `POST /api/notes` – Create a new note
+  - **Request body:** `{ "ownerId": "...", "content": "..." }`
+  - **Response:** Note object with id and timestamps
+- `PUT /api/notes/{id}` – Update a note (only content is updatable)
+  - **Request body:** `{ "content": "..." }`
+- `DELETE /api/notes/{id}` – Delete a note
+
+## OpenAPI Documentation
+
+When the backend is running (`mvn quarkus:dev`), you can access the API documentation:
+
+- **OpenAPI Spec (YAML):** http://localhost:8080/q/openapi
+- **OpenAPI Spec (JSON):** http://localhost:8080/q/openapi?format=json
+- **Swagger UI (Interactive):** http://localhost:8080/q/swagger-ui
+
+The interactive Swagger UI allows you to test all endpoints directly from your browser.
 
 ## Building for Production
 
@@ -101,9 +155,29 @@ The JAR will be in `target/`.
 
 ## Technologies Used
 
-- **Backend**: Quarkus 3.4.3, Java 17, Hibernate Panache
-- **Database**: PostgreSQL
-- **Frontend**: React 18, Vite 5, Mantine 7, Tabler Icons
+### Backend
+- **Quarkus** 3.4.3
+- **Java** 17
+- **Hibernate Panache** (ORM)
+- **PostgreSQL** JDBC driver
+- **Flyway** (schema migrations)
+- **BCrypt** (password hashing via Quarkus Elytron)
+- **SmallRye OpenAPI** (OpenAPI 3.0 + Swagger UI)
+
+### Frontend
+- **React** 18
+- **Vite** 5
+- **Mantine** 7 (UI components)
+- **Tabler Icons** (icon library)
+
+## Development
+
+### Tips
+
+- **Quarkus Dev Mode:** Changes to Java code are hot-reloaded automatically
+- **Frontend Dev Mode:** Changes to React code are hot-reloaded by Vite
+- **Database Migrations:** Flyway runs automatically on startup; add new migrations to `src/main/resources/db/migration/` with naming `V{version}__{description}.sql`
+- **API Testing:** Use Swagger UI at `/q/swagger-ui` or tools like Postman/curl
 
 ## License
 
