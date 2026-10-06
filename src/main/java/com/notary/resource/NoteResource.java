@@ -41,16 +41,31 @@ public class NoteResource {
         return User.findById(userId);
     }
 
-    /** List authenticated user's notes, newest first. */
+    /**
+     * Check if caller has permission to access a note.
+     * Superusers can access any note; regular users can only access their own.
+     */
+    private boolean canAccessNote(User caller, Note note) {
+        return caller.superuser || note.ownerId.equals(caller.id);
+    }
+
+    /** List notes. Superusers see all; regular users see only their own. */
     @GET
     public Response list() {
         User user = getAuthenticatedUser();
         if (user == null) {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
-        List<Note> notes = Note.find("ownerId", user.id)
-                .sort("createdAt desc")
-                .list();
+        List<Note> notes;
+        if (user.superuser) {
+            // Superuser sees all notes, sorted by createdAt descending
+            notes = Note.findAll().sort("createdAt desc").list();
+        } else {
+            // Regular user sees only their own notes
+            notes = Note.find("ownerId", user.id)
+                    .sort("createdAt desc")
+                    .list();
+        }
         return Response.ok(notes).build();
     }
 
@@ -62,7 +77,7 @@ public class NoteResource {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
         Note note = Note.findById(id);
-        if (note == null || !note.ownerId.equals(user.id)) {
+        if (note == null || !canAccessNote(user, note)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         return Response.ok(note).build();
@@ -97,7 +112,7 @@ public class NoteResource {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
         Note note = Note.findById(id);
-        if (note == null || !note.ownerId.equals(user.id)) {
+        if (note == null || !canAccessNote(user, note)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         if (req == null || (req.title() == null && req.content() == null)) {
@@ -125,7 +140,7 @@ public class NoteResource {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
         Note note = Note.findById(id);
-        if (note == null || !note.ownerId.equals(user.id)) {
+        if (note == null || !canAccessNote(user, note)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         return note.delete() > 0

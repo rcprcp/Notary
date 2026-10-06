@@ -52,6 +52,15 @@ public class UserResource {
         return User.findById(userId);
     }
 
+    /**
+     * Check if caller has permission to access a target user.
+     * Superusers can access anyone; regular users can only access themselves.
+     * Returns false and logs access denial if permission is denied.
+     */
+    private boolean canAccessUser(User caller, UUID targetId) {
+        return caller.superuser || caller.id.equals(targetId);
+    }
+
     @GET
     @Path("/me")
     public Response getCurrentUser() {
@@ -123,11 +132,24 @@ public class UserResource {
         if (caller == null) {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
-        // Can only view your own user record
-        if (!caller.id.equals(id)) {
+        if (!canAccessUser(caller, id)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        return Response.ok(caller).build();
+        User user = User.findById(id);
+        return user == null ? Response.status(Response.Status.NOT_FOUND).build() : Response.ok(user).build();
+    }
+
+    @GET
+    public Response list() {
+        User caller = getAuthenticatedUser();
+        if (caller == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+        if (!caller.superuser) {
+            // Non-superusers can only list their own user (not useful, but consistent)
+            return Response.status(Response.Status.FORBIDDEN).build();
+        }
+        return Response.ok(User.listAll()).build();
     }
 
     @PUT
@@ -138,8 +160,11 @@ public class UserResource {
         if (caller == null) {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
-        // Can only update your own user record
-        if (!caller.id.equals(id)) {
+        if (!canAccessUser(caller, id)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        User user = User.findById(id);
+        if (user == null) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         if (req == null) {
@@ -148,25 +173,25 @@ public class UserResource {
         if (!isBlank(req.themeColor()) && !THEME_COLORS.contains(req.themeColor())) {
             return Response.status(Response.Status.BAD_REQUEST).entity("invalid themeColor").build();
         }
-        if (!isBlank(req.name()) && !req.name().equals(caller.name)) {
+        if (!isBlank(req.name()) && !req.name().equals(user.name)) {
             if (User.findByName(req.name()) != null) {
                 return Response.status(Response.Status.CONFLICT).entity("name already in use").build();
             }
-            caller.name = req.name();
+            user.name = req.name();
         }
-        if (!isBlank(req.email()) && !req.email().equals(caller.email)) {
+        if (!isBlank(req.email()) && !req.email().equals(user.email)) {
             if (User.findByEmail(req.email()) != null) {
                 return Response.status(Response.Status.CONFLICT).entity("email already in use").build();
             }
-            caller.email = req.email();
+            user.email = req.email();
         }
         if (!isBlank(req.password())) {
-            caller.passwordHash = BcryptUtil.bcryptHash(req.password());
+            user.passwordHash = BcryptUtil.bcryptHash(req.password());
         }
         if (!isBlank(req.themeColor())) {
-            caller.themeColor = req.themeColor();
+            user.themeColor = req.themeColor();
         }
-        return Response.ok(caller).build();
+        return Response.ok(user).build();
     }
 
     @DELETE
@@ -177,8 +202,7 @@ public class UserResource {
         if (caller == null) {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
-        // Can only delete your own user record
-        if (!caller.id.equals(id)) {
+        if (!canAccessUser(caller, id)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
         return User.deleteById(id)
