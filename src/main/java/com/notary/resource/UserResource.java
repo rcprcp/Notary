@@ -14,6 +14,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -31,6 +32,9 @@ public class UserResource {
     /** Request body for create/update. For update, every field is optional. */
     public record UserRequest(String name, String email, String password, String themeColor) {}
 
+    /** Request body for login. */
+    public record LoginRequest(String email, String password) {}
+
     @GET
     public List<User> list() {
         return User.listAll();
@@ -41,6 +45,23 @@ public class UserResource {
     public Response get(@PathParam("id") UUID id) {
         User user = User.findById(id);
         return user == null ? Response.status(Response.Status.NOT_FOUND).build() : Response.ok(user).build();
+    }
+
+    @POST
+    @Path("/login")
+    @Transactional
+    public Response login(LoginRequest req) {
+        if (req == null || isBlank(req.email()) || isBlank(req.password())) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("email and password are required").build();
+        }
+        User user = User.findByEmail(req.email());
+        if (user == null || !BcryptUtil.matches(req.password(), user.passwordHash)) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity("invalid email or password").build();
+        }
+        user.lastLogin = Instant.now();
+        return Response.ok(user).build();
     }
 
     @POST

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import java.time.Instant;
 
 @Entity
 @Table(name = "users")
@@ -24,6 +25,10 @@ public class User extends BaseEntity {
     /** Mantine primary color name chosen by the user in the UI. */
     @Column(name = "theme_color", nullable = false, length = 32)
     public String themeColor = DEFAULT_THEME_COLOR;
+
+    /** Timestamp of the user's last successful login. */
+    @Column(name = "last_login")
+    public Instant lastLogin;
 
     public static User findByEmail(String email) {
         return find("email", email).firstResult();

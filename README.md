@@ -12,17 +12,18 @@ Notary/
 │       ├── java/com/notary/
 │       │   ├── entity/
 │       │   │   ├── BaseEntity.java            # Base class with UUID id and timestamps
-│       │   │   ├── User.java                  # User entity with unique name/email, theme_color
+│       │   │   ├── User.java                  # User entity with unique name/email, theme_color, last_login
 │       │   │   └── Note.java                  # Note entity with title and content
 │       │   └── resource/
-│       │       ├── UserResource.java          # REST endpoints for users (CRUD)
+│       │       ├── UserResource.java          # REST endpoints for users (CRUD + login)
 │       │       └── NoteResource.java          # REST endpoints for notes (CRUD)
 │       └── resources/
 │           ├── application.properties         # Quarkus config (DB, Flyway, OpenAPI)
 │           └── db/migration/
 │               ├── V1.0.0__create_users_and_notes.sql
 │               ├── V1.0.1__add_theme_color_to_users.sql
-│               └── V1.0.2__add_title_to_notes.sql
+│               ├── V1.0.2__add_title_to_notes.sql
+│               └── V1.0.3__add_last_login_to_users.sql
 ├── ui/                                        # React + Vite frontend
 │   ├── src/
 │   │   ├── App.jsx                            # Main app shell with routing
@@ -98,6 +99,7 @@ Open your browser to **`http://localhost:3000`**.
 - `email` (VARCHAR 320, unique, required)
 - `password_hash` (VARCHAR 255, BCrypt hashed, never returned in API responses)
 - `theme_color` (VARCHAR 32, Mantine color name, default: `'blue'`)
+- `last_login` (TIMESTAMP, nullable, updated on successful login)
 - `created_at` (TIMESTAMP, set on insert)
 - `updated_at` (TIMESTAMP, auto-updated on modification)
 
@@ -117,6 +119,12 @@ Indexed on `owner_id` for efficient owner-based queries.
 
 - `GET /api/users` – List all users
 - `GET /api/users/{id}` – Get a specific user by UUID
+- `POST /api/users/login` – Authenticate a user and update last_login
+  - **Request body:** `{ "email": "...", "password": "..." }`
+  - **Response:** User object on success (password hash is not returned)
+  - Returns 400 if email or password is missing
+  - Returns 401 if email doesn't exist or password is incorrect
+  - Sets `last_login` to the current timestamp on successful login
 - `POST /api/users` – Create a new user
   - **Request body:** `{ "name": "...", "email": "...", "password": "...", "themeColor": "..." }`
   - **Response:** User object (password hash is not returned, theme is included)
@@ -254,6 +262,7 @@ npm run dev
 - **OpenAPI updates:** Changes to REST endpoint signatures are reflected in the OpenAPI spec automatically on next Quarkus hot-reload.
 - **Theme persistence:** The selected theme is saved to the current user's record in the database. When you select a different user from the "Acting as" dropdown, their saved theme loads from the server.
 - **Note sorting:** Notes are sorted by creation time (newest first) by default. Click any column header in the Notes table to sort by that field.
+- **Login tracking:** Each successful login via `POST /api/users/login` updates the user's `last_login` timestamp.
 
 ## Technologies Used
 
@@ -263,7 +272,7 @@ npm run dev
 - **Hibernate Panache** – ORM simplification
 - **PostgreSQL** JDBC driver – database connectivity
 - **Flyway** – database schema versioning and migration
-- **BCrypt** (Quarkus Elytron) – password hashing
+- **BCrypt** (Quarkus Elytron) – password hashing and verification
 - **SmallRye OpenAPI** – automatic OpenAPI 3.0 spec generation and Swagger UI
 
 ### Frontend
