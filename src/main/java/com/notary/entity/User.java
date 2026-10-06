@@ -30,6 +30,14 @@ public class User extends BaseEntity {
     @Column(name = "last_login")
     public Instant lastLogin;
 
+    /**
+     * Superuser flag. Read-only for the application: it is never inserted or updated
+     * by code. Managers set it directly in the database (psql). Not exposed to the UI.
+     */
+    @JsonIgnore
+    @Column(name = "superuser", nullable = false, insertable = false, updatable = false)
+    public boolean superuser;
+
     public static User findByEmail(String email) {
         return find("email", email).firstResult();
     }
