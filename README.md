@@ -12,8 +12,8 @@ Notary/
 │       ├── java/com/notary/
 │       │   ├── entity/
 │       │   │   ├── BaseEntity.java            # Base class with UUID id and timestamps
-│       │   │   ├── User.java                  # User entity with email, password, theme, superuser flag
-│       │   │   └── Note.java                  # Note entity with title and content
+│       │   │   ├── User.java                  # User entity with unique name/email, theme_color, last_login, superuser flag
+│       │   │   └── Note.java                  # Note entity with title and markdown content
 │       │   └── resource/
 │       │       ├── UserResource.java          # REST endpoints for users (CRUD + login/logout)
 │       │       └── NoteResource.java          # REST endpoints for notes (CRUD)
@@ -32,7 +32,7 @@ Notary/
 │   │   ├── main.jsx                           # React entry point with session check
 │   │   ├── api.js                             # Fetch wrapper for REST API (includes credentials)
 │   │   ├── LoginPage.jsx                      # Login and signup page
-│   │   ├── NotesPanel.jsx                     # Note management UI
+│   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor
 │   │   ├── ThemeButton.jsx                    # Theme color picker
 │   │   └── index.css                          # Styles
 │   ├── vite.config.js                         # Vite configuration
@@ -125,7 +125,7 @@ UPDATE users SET superuser = TRUE WHERE email = 'mickey@mickey.com';
 - `id` (UUID, primary key)
 - `owner_id` (UUID, foreign key → users.id, ON DELETE CASCADE)
 - `title` (VARCHAR 255, required)
-- `content` (VARCHAR 10485760, max PostgreSQL VARCHAR length)
+- `content` (TEXT, stores markdown-formatted content, max ~10MB)
 - `created_at` (TIMESTAMP, set on insert)
 - `updated_at` (TIMESTAMP, auto-updated on modification)
 
@@ -245,6 +245,7 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - **Response:** Note object with id and timestamps
   - Returns 401 if not authenticated
   - Returns 400 if title is missing or blank
+  - Content is stored as markdown and set by the authenticated user
   - Note is always owned by the authenticated user (ownerId is not accepted in the request)
 
 - `PUT /api/notes/{id}` – Update a note
@@ -254,6 +255,7 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Returns 404 if note doesn't exist or caller lacks permission
   - Returns 400 if title is blank
   - Superusers can update any note; regular users can only update their own
+  - Content is stored as markdown
 
 - `DELETE /api/notes/{id}` – Delete a note
   - **Response:** 204 No Content
@@ -287,14 +289,24 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 - **List notes** – Table with Created, Updated, and Title columns (all sortable)
   - Default sort: Created, descending (newest first)
   - Click column headers to sort; click again to reverse direction
-- **Create note** – Modal with Title and Content fields
+- **Create note** – Modal with Title and Rich Text Editor fields
   - Title is required and shown in the list
-  - Content can be up to ~10MB
+  - Content uses a full-featured markdown editor
 - **Edit note** – Click a row or the Edit button to open the note
-  - Modal shows both Title and Content
-  - Both fields can be edited
+  - Modal shows both Title and Rich Text Editor
+  - Both fields can be edited with live formatting
   - Only changed fields are sent to the server on update
 - **Delete note** – Confirmation shows the note's title
+
+### Rich Text Editing with Markdown
+- **Formatting toolbar** – Bold, Italic, Underline, Strikethrough, Clear formatting
+- **Headings** – H1, H2, H3 support
+- **Lists** – Bullet lists and ordered lists
+- **Code blocks** – Inline code and multi-line code blocks
+- **Links** – Insert and remove links
+- **Blockquotes** – Quote formatting
+- **Markdown storage** – Content is stored as markdown in the database, so you can use it in any markdown viewer
+- **Live preview** – Editor supports TipTap's rich text rendering with markdown shortcuts
 
 ### Theme Selection
 - **"Theme" button** – Choose from 14 Mantine color palettes
@@ -368,6 +380,7 @@ npm run dev
 - **Note sorting:** Notes are sorted by creation time (newest first) by default. Click any column header in the Notes table to sort by that field.
 - **Login tracking:** Each successful login via `POST /api/users/login` updates the user's `last_login` timestamp.
 - **Session security:** Session cookies are HttpOnly and SameSite=Strict; the browser handles them automatically.
+- **Markdown in notes:** Content is stored as markdown, so you can export, version control, and sync notes easily.
 
 ## Technologies Used
 
@@ -384,7 +397,8 @@ npm run dev
 - **React** 18 – UI library
 - **React Router** 6 – client-side routing (HashRouter for SPA)
 - **Vite** 5 – fast build tool and dev server
-- **Mantine** 7 – UI component library
+- **Mantine** 7 – UI component library with RichTextEditor
+- **TipTap** 2 – headless rich text editor with markdown support
 - **Tabler Icons** – icon library
 
 ## License
