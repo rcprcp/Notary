@@ -53,6 +53,9 @@ public class UserResource {
         if (!isBlank(req.themeColor()) && !THEME_COLORS.contains(req.themeColor())) {
             return Response.status(Response.Status.BAD_REQUEST).entity("invalid themeColor").build();
         }
+        if (User.findByName(req.name()) != null) {
+            return Response.status(Response.Status.CONFLICT).entity("name already in use").build();
+        }
         if (User.findByEmail(req.email()) != null) {
             return Response.status(Response.Status.CONFLICT).entity("email already in use").build();
         }
@@ -81,14 +84,17 @@ public class UserResource {
         if (!isBlank(req.themeColor()) && !THEME_COLORS.contains(req.themeColor())) {
             return Response.status(Response.Status.BAD_REQUEST).entity("invalid themeColor").build();
         }
+        if (!isBlank(req.name()) && !req.name().equals(user.name)) {
+            if (User.findByName(req.name()) != null) {
+                return Response.status(Response.Status.CONFLICT).entity("name already in use").build();
+            }
+            user.name = req.name();
+        }
         if (!isBlank(req.email()) && !req.email().equals(user.email)) {
             if (User.findByEmail(req.email()) != null) {
                 return Response.status(Response.Status.CONFLICT).entity("email already in use").build();
             }
             user.email = req.email();
-        }
-        if (!isBlank(req.name())) {
-            user.name = req.name();
         }
         if (!isBlank(req.password())) {
             user.passwordHash = BcryptUtil.bcryptHash(req.password());

@@ -11,7 +11,7 @@ public class User extends BaseEntity {
 
     public static final String DEFAULT_THEME_COLOR = "blue";
 
-    @Column(name = "name", nullable = false)
+    @Column(name = "name", nullable = false, unique = true, length = 255)
     public String name;
 
     @Column(name = "email", nullable = false, unique = true, length = 320)
@@ -27,5 +27,9 @@ public class User extends BaseEntity {
 
     public static User findByEmail(String email) {
         return find("email", email).firstResult();
+    }
+
+    public static User findByName(String name) {
+        return find("name", name).firstResult();
     }
 }

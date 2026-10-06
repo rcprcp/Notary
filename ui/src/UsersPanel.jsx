@@ -10,7 +10,9 @@ export default function UsersPanel() {
   const [opened, setOpened] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [fieldErrors, setFieldErrors] = useState({})
   const [saving, setSaving] = useState(false)
+  const [duplicateField, setDuplicateField] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -28,41 +30,63 @@ export default function UsersPanel() {
   const openCreate = () => {
     setEditingId(null)
     setForm(EMPTY_FORM)
+    setFieldErrors({})
     setOpened(true)
   }
 
   const openEdit = (user) => {
     setEditingId(user.id)
     setForm({ name: user.name, email: user.email, password: '', passwordConfirm: '' })
+    setFieldErrors({})
     setOpened(true)
   }
 
   const save = async () => {
     const isEdit = editingId !== null
-    if (!form.name.trim() || !form.email.trim() || (!isEdit && !form.password)) {
-      setError(isEdit ? 'Name and email are required' : 'Name, email and password are required')
+
+    // Required-field validation (name and email are always required).
+    const errs = {}
+    if (!form.name.trim()) errs.name = 'Name is required'
+    if (!form.email.trim()) errs.email = 'Email is required'
+    if (!isEdit && !form.password) errs.password = 'Password is required'
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs)
       return
     }
-    // If password is provided, confirm it matches
     if (form.password && form.password !== form.passwordConfirm) {
-      setError('Passwords do not match')
+      setFieldErrors({ passwordConfirm: 'Passwords do not match' })
       return
     }
+    setFieldErrors({})
+
     setSaving(true)
     try {
+      const name = form.name.trim()
+      const email = form.email.trim()
       if (isEdit) {
         // Only send the password if the user typed a new one.
-        const body = { name: form.name, email: form.email }
+        const body = { name, email }
         if (form.password) body.password = form.password
         await usersApi.update(editingId, body)
       } else {
-        await usersApi.create({ name: form.name, email: form.email, password: form.password })
+        await usersApi.create({ name, email, password: form.password })
       }
       setOpened(false)
       setError(null)
       await load()
     } catch (e) {
-      setError(`Failed to save user: ${e.message}`)
+      if (e.status === 409) {
+        const msg = e.message.toLowerCase()
+        if (msg.includes('name')) {
+          setDuplicateField({ field: 'name', value: form.name.trim() })
+        } else if (msg.includes('email')) {
+          setDuplicateField({ field: 'email', value: form.email.trim() })
+        } else {
+          setError(`Failed to save user: ${e.message}`)
+        }
+      } else {
+        setError(`Failed to save user: ${e.message}`)
+      }
     } finally {
       setSaving(false)
     }
@@ -77,6 +101,17 @@ export default function UsersPanel() {
     } catch (e) {
       setError(`Failed to delete user: ${e.message}`)
     }
+  }
+
+  const getDuplicateMessage = () => {
+    if (!duplicateField) return ''
+    const { field, value } = duplicateField
+    if (field === 'name') {
+      return `A user with the name "${value}" already exists. Please use a different name.`
+    } else if (field === 'email') {
+      return `A user with the email "${value}" already exists. Please use a different email.`
+    }
+    return ''
   }
 
   return (
@@ -135,6 +170,7 @@ export default function UsersPanel() {
             label="Name"
             required
             value={form.name}
+            error={fieldErrors.name}
             onChange={(e) => setForm({ ...form, name: e.currentTarget.value })}
           />
           <TextInput
@@ -142,23 +178,41 @@ export default function UsersPanel() {
             type="email"
             required
             value={form.email}
+            error={fieldErrors.email}
             onChange={(e) => setForm({ ...form, email: e.currentTarget.value })}
           />
           <PasswordInput
             label={editingId ? 'New password (leave blank to keep current)' : 'Password'}
             required={!editingId}
             value={form.password}
+            error={fieldErrors.password}
             onChange={(e) => setForm({ ...form, password: e.currentTarget.value })}
           />
           <PasswordInput
             label={editingId ? 'Confirm new password' : 'Confirm password'}
             required={form.password !== ''}
             value={form.passwordConfirm}
+            error={fieldErrors.passwordConfirm}
             onChange={(e) => setForm({ ...form, passwordConfirm: e.currentTarget.value })}
           />
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setOpened(false)}>Cancel</Button>
             <Button onClick={save} loading={saving}>{editingId ? 'Update' : 'Create'}</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={duplicateField !== null}
+        onClose={() => setDuplicateField(null)}
+        title="Duplicate field"
+        centered
+        zIndex={1000}
+      >
+        <Stack>
+          <Text>{getDuplicateMessage()}</Text>
+          <Group justify="flex-end">
+            <Button onClick={() => setDuplicateField(null)}>OK</Button>
           </Group>
         </Stack>
       </Modal>
