@@ -1,9 +1,92 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Group, Modal, Select, Stack, Table, Text, TextInput, Textarea, Title, UnstyledButton } from '@mantine/core'
+import { Alert, Button, Group, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton } from '@mantine/core'
 import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react'
+import { RichTextEditor } from '@mantine/tiptap'
+import { useEditor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Underline from '@tiptap/extension-underline'
+import Link from '@tiptap/extension-link'
+import Highlight from '@tiptap/extension-highlight'
+import TextAlign from '@tiptap/extension-text-align'
+import Placeholder from '@tiptap/extension-placeholder'
+import { Markdown } from '@tiptap/extension-markdown'
 import { notesApi } from './api'
 
 const EMPTY_FORM = { title: '', content: '' }
+
+function MarkdownEditor({ value, onChange }) {
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Underline,
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        defaultProtocol: 'https',
+      }),
+      Highlight,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      Placeholder.configure({
+        placeholder: 'Write your note here...',
+      }),
+      Markdown,
+    ],
+    content: value || '',
+    onUpdate: ({ editor }) => {
+      const markdown = editor.storage.markdown?.getMarkdown ? editor.storage.markdown.getMarkdown() : editor.getText()
+      onChange(markdown)
+    },
+    editorProps: {
+      attributes: {
+        spellcheck: 'true',
+      },
+    },
+  })
+
+  useEffect(() => {
+    if (!editor) return
+    const nextMarkdown = value || ''
+    const currentMarkdown = editor.storage.markdown?.getMarkdown ? editor.storage.markdown.getMarkdown() : editor.getText()
+    if (currentMarkdown !== nextMarkdown) {
+      editor.commands.setContent(nextMarkdown, { emitUpdate: false })
+    }
+  }, [editor, value])
+
+  return (
+    <RichTextEditor editor={editor}>
+      <RichTextEditor.Toolbar sticky stickyOffset={60}>
+        <RichTextEditor.ControlsGroup>
+          <RichTextEditor.Bold />
+          <RichTextEditor.Italic />
+          <RichTextEditor.Underline />
+          <RichTextEditor.Strikethrough />
+          <RichTextEditor.ClearFormatting />
+        </RichTextEditor.ControlsGroup>
+
+        <RichTextEditor.ControlsGroup>
+          <RichTextEditor.H1 />
+          <RichTextEditor.H2 />
+          <RichTextEditor.H3 />
+        </RichTextEditor.ControlsGroup>
+
+        <RichTextEditor.ControlsGroup>
+          <RichTextEditor.BulletList />
+          <RichTextEditor.OrderedList />
+          <RichTextEditor.Blockquote />
+          <RichTextEditor.Code />
+          <RichTextEditor.CodeBlock />
+        </RichTextEditor.ControlsGroup>
+
+        <RichTextEditor.ControlsGroup>
+          <RichTextEditor.Link />
+          <RichTextEditor.Unlink />
+        </RichTextEditor.ControlsGroup>
+      </RichTextEditor.Toolbar>
+
+      <RichTextEditor.Content />
+    </RichTextEditor>
+  )
+}
 
 // Clickable, sortable column header.
 function SortableTh({ label, field, sort, onSort }) {
@@ -195,14 +278,15 @@ export default function NotesPanel() {
             error={formError}
             onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
           />
-          <Textarea
-            label="Content"
-            autosize
-            minRows={6}
-            maxRows={20}
-            value={form.content}
-            onChange={(e) => setForm({ ...form, content: e.currentTarget.value })}
-          />
+
+          <div>
+            <Text fw={500} size="sm" mb={6}>Content</Text>
+            <MarkdownEditor
+              value={form.content}
+              onChange={(value) => setForm((current) => ({ ...current, content: value }))}
+            />
+          </div>
+
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setOpened(false)}>Cancel</Button>
             <Button onClick={save} loading={saving}>{editingNote ? 'Update' : 'Create'}</Button>
@@ -212,3 +296,4 @@ export default function NotesPanel() {
     </Stack>
   )
 }
+
