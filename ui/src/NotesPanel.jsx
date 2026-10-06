@@ -5,11 +5,6 @@ import { notesApi, usersApi } from './api'
 
 const EMPTY_FORM = { title: '', content: '' }
 
-function preview(text, max = 80) {
-  if (!text) return ''
-  return text.length > max ? `${text.slice(0, max)}…` : text
-}
-
 // Clickable, sortable column header.
 function SortableTh({ label, field, sort, onSort }) {
   const active = sort.field === field
@@ -26,7 +21,7 @@ function SortableTh({ label, field, sort, onSort }) {
   )
 }
 
-const TEXT_FIELDS = ['title', 'content']
+const TEXT_FIELDS = ['title']
 
 // Notes of one user (selected by UUID), newest first by default.
 // `currentUserId` is the "Acting as" user from the header; it is the default owner.
@@ -173,20 +168,18 @@ export default function NotesPanel({ currentUserId }) {
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead>
             <Table.Tr>
-              <SortableTh label="Title" field="title" sort={sort} onSort={toggleSort} />
-              <SortableTh label="Content" field="content" sort={sort} onSort={toggleSort} />
               <SortableTh label="Created" field="createdAt" sort={sort} onSort={toggleSort} />
               <SortableTh label="Updated" field="updatedAt" sort={sort} onSort={toggleSort} />
+              <SortableTh label="Title" field="title" sort={sort} onSort={toggleSort} />
               <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {sortedNotes.map((n) => (
               <Table.Tr key={n.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(n)}>
-                <Table.Td>{n.title || <Text c="dimmed" fs="italic">Untitled</Text>}</Table.Td>
-                <Table.Td>{preview(n.content)}</Table.Td>
                 <Table.Td>{new Date(n.createdAt).toLocaleString()}</Table.Td>
                 <Table.Td>{new Date(n.updatedAt).toLocaleString()}</Table.Td>
+                <Table.Td>{n.title || <Text c="dimmed" fs="italic">Untitled</Text>}</Table.Td>
                 <Table.Td>
                   <Group gap="xs" wrap="nowrap">
                     <Button size="xs" variant="light" onClick={(e) => { e.stopPropagation(); openEdit(n) }}>Edit</Button>
