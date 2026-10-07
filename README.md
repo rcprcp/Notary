@@ -16,7 +16,7 @@ NoteArray/
 │       │   │   └── Note.java                  # Note entity with title, markdown content, and space-delimited tags
 │       │   └── resource/
 │       │       ├── UserResource.java          # REST endpoints for users (CRUD + login/logout)
-│       │       └── NoteResource.java          # REST endpoints for notes (CRUD + search + import)
+│       │       └── NoteResource.java          # REST endpoints for notes (CRUD + search + filter + import)
 │       └── resources/
 │           ├── application.properties         # Quarkus config (DB, Flyway, OpenAPI, sessions)
 │           └── db/migration/
@@ -27,7 +27,8 @@ NoteArray/
 │               ├── V1.0.4__add_superuser_to_users.sql
 │               ├── V1.0.5__insert_initial_user.sql
 │               ├── V1.0.6__add_fulltext_search_to_notes.sql
-│               └── V1.0.7__add_tags_to_notes.sql
+│               ├── V1.0.7__add_tags_to_notes.sql
+│               └── V1.0.8__add_pinned_to_notes.sql
 ├── ui/                                        # React + Vite frontend (mobile-responsive)
 │   ├── src/
 │   │   ├── App.jsx                            # Main app shell with routing and logout
@@ -35,6 +36,7 @@ NoteArray/
 │   │   ├── api.js                             # Fetch wrapper for REST API (includes credentials)
 │   │   ├── LoginPage.jsx                      # Login and signup page
 │   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor, tags, search, import, auto-save, and responsive design
+│   │   ├── FilterPanel.jsx                    # Advanced search and filtering UI
 │   │   ├── ThemeButton.jsx                    # Theme color picker
 │   │   └── index.css                          # Mobile-first responsive styles
 │   ├── vite.config.js                         # Vite configuration
@@ -129,6 +131,7 @@ UPDATE users SET superuser = TRUE WHERE email = 'mickey@mickey.com';
 - `title` (VARCHAR 255, required)
 - `content` (TEXT, stores markdown-formatted content, max ~10MB)
 - `tags` (VARCHAR 10000, space-delimited tags, default empty)
+- `pinned` (BOOLEAN, default: FALSE, for favorite/pinned notes)
 - `title_tsv` (tsvector, auto-generated full-text search index on title)
 - `content_tsv` (tsvector, auto-generated full-text search index on content, truncated to 500KB)
 - `created_at` (TIMESTAMP, set on insert)
@@ -255,7 +258,7 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Note is always owned by the authenticated user (ownerId is not accepted in the request)
 
 - `PUT /api/notes/{id}` – Update a note
-  - **Request body:** `{ "title": "..." }` or `{ "content": "..." }` or `{ "tags": "..." }` or any combination
+  - **Request body:** `{ "title": "...", "content": "...", "tags": "...", "pinned": true|false }` or any combination
   - **Response:** Updated note object
   - Returns 401 if not authenticated
   - Returns 404 if note doesn't exist or caller lacks permission
@@ -263,6 +266,7 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Superusers can update any note; regular users can only update their own
   - Content is stored as markdown
   - Tags are space-delimited
+  - `pinned` field allows marking notes as favorites
 
 - `DELETE /api/notes/{id}` – Delete a note
   - **Response:** 204 No Content
@@ -271,12 +275,22 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Superusers can delete any note; regular users can only delete their own
 
 ### Notes – Filters
-- **GET** `/api/notes` also accepts filter parameters, combined with AND (and with the search above):
-  - `tags` – repeatable; a note must have every listed tag
-  - `untagged` – `true` to return only notes without tags
+
+- **GET** `/api/notes` also accepts filter parameters, combined with AND (and with any search query):
+  - `tags` – repeatable query parameter; a note must have every listed tag to match. Example: `?tags=work&tags=important`
+  - `untagged` – `true` to return only notes without any tags
   - `pinned` – `true` to return only pinned notes
-  - `createdFrom` / `createdTo`, `updatedFrom` / `updatedTo` – ISO-8601 instants (inclusive range); invalid values return 400
-- **PUT** `/api/notes/{id}` accepts `{ "pinned": true|false }` to pin or unpin a note
+  - `createdFrom` / `createdTo` – ISO-8601 instants for note creation date range (inclusive)
+  - `updatedFrom` / `updatedTo` – ISO-8601 instants for note modification date range (inclusive)
+  - Invalid date values return 400
+  - All filters are combined with AND logic
+  - Examples:
+    - `?tags=work` – notes tagged with "work"
+    - `?tags=work&tags=important` – notes tagged with both "work" AND "important"
+    - `?untagged=true` – notes with no tags
+    - `?pinned=true` – pinned notes only
+    - `?createdFrom=2024-01-01T00:00:00Z&createdTo=2024-12-31T23:59:59Z` – notes created in 2024
+    - `?tags=work&pinned=true&updatedFrom=2024-10-01T00:00:00Z` – pinned work notes updated since Oct 1
 
 ### Notes – Search
 
@@ -291,6 +305,7 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Search is word-based, case-insensitive, and ignores common stop words (like "the")
   - Word endings are normalized (e.g., "running" matches "run")
   - Superusers search all notes; regular users search only their own
+  - Can be combined with filter parameters: `?q=bug&searchTitles=true&tags=urgent`
 
 ### Notes – Import
 
@@ -363,6 +378,7 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
   - Default sort: Created, descending (newest first)
   - Click column headers (desktop) to sort; click again to reverse direction
   - Tags displayed as badges below each note's title
+  - Star icon to pin/unpin notes as favorites
 - **Create note** – Modal with Title, Tags, and Rich Text Editor fields (full-screen on mobile)
   - Title is required and shown in the list
   - Tags are space-delimited (e.g., "joplin important work")
@@ -372,6 +388,7 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
   - Modal shows Title, Tags, and Rich Text Editor (full-screen on mobile)
   - All fields can be edited with live formatting
   - Only changed fields are sent to the server on update
+  - Pin/unpin toggle in the edit modal
 - **Delete note** – Confirmation shows the note's title
 
 ### Tags
@@ -406,13 +423,32 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 - **Markdown storage** – Content is stored as markdown in the database, so you can use it in any markdown viewer
 - **Live preview** – Editor supports TipTap's rich text rendering with markdown shortcuts
 
-### Advanced Filtering
-- **Filter panel** – sidebar on desktop, collapsible "Filters" section on mobile
-  - Date range (last 7 days, 30 days, or custom range) on modified or created date
-  - Multi-select tags filter
-  - Smart collections with note counts: Untagged, Pinned, Modified today, Oldest unmodified (30+ days)
-- **Active filter badges** with clear buttons, an active filter count, and a "Clear all filters" button
-- **Saved searches** – save the current search and filters under a name, re-apply or delete them; stored in browser localStorage together with your last used filters
+### Advanced Search & Filtering
+- **Filter panel** – Sidebar on desktop (collapsible on mobile)
+  - **Date range filters:**
+    - Last 7 days / Last 30 days / Custom date range
+    - Filter by note creation date or modification date
+    - Date picker for custom ranges
+  - **Tag multi-select filter:**
+    - Choose multiple tags; notes must have all selected tags
+    - Tag suggestions based on existing tags
+    - Visual tag count display
+  - **Smart collections:**
+    - **Untagged** – Notes with no tags
+    - **Pinned** – Favorite/pinned notes
+    - **Modified today** – Notes edited today
+    - **Oldest unmodified** – Notes not edited in 30+ days
+    - Display note counts for each collection
+- **Active filter badges** showing which filters are applied
+  - Clear individual filters with X button
+  - "Clear all filters" button to reset all filters
+  - Active filter count indicator
+- **Saved searches:**
+  - Save current search query and filters under a custom name
+  - Quick access to saved searches
+  - Delete saved searches
+  - Filters and saved searches stored in browser localStorage
+  - Auto-restore last used filters on page reload
 
 ### Full-Text Search
 - **Search bar** – Type your search query
@@ -425,6 +461,7 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 - **Search results** – Shows matching notes with result count
 - **Smart search** – Word-based, case-insensitive, ignores common words and word endings
 - **Help modal** – Click search with no checkboxes to see instructions
+- **Combined with filters** – Use search and filters together for powerful discovery
 
 ### Import Notes
 - **Import button** – Upload notes from external sources
@@ -445,8 +482,8 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 
 ### Superuser Features (if applicable)
 - If you are a superuser, `GET /api/notes` returns all notes from all users
-- You can view, edit, and delete any user's notes
-- You can search across all users' notes
+- You can view, edit, delete, and pin any user's notes
+- You can search and filter across all users' notes
 - You can view and manage all user accounts via API (no UI for user management in this release)
 
 ## Building for Production
@@ -536,11 +573,16 @@ npm run dev
 - **Login tracking:** Each successful login via `POST /api/users/login` updates the user's `last_login` timestamp.
 - **Session security:** Session cookies are HttpOnly and SameSite=Strict; the browser handles them automatically.
 - **Markdown in notes:** Content is stored as markdown, so you can export, version control, and sync notes easily.
-- **Tags and search:** Tags are space-delimited and searchable via the full-text search feature.
+- **Tags and search:** Tags are space-delimited and searchable via the full-text search feature and tag filters.
 - **Importing notes:** Use the Import feature to migrate notes from Joplin or upload individual markdown files. Imports automatically preserve metadata and convert folder structures to tags.
 - **Auto-save behavior:** Changes to existing notes are automatically saved after 2 seconds of inactivity. New notes require manual save first. The debounce delay prevents excessive server requests while providing responsive save behavior. No changes are lost when closing the modal—pending changes are flushed before closing.
 - **Responsive design:** Mobile-first CSS approach with breakpoints at 768px and 1024px. Use browser DevTools to test different screen sizes. Touch targets are 44px minimum on mobile for accessibility.
 - **Mobile optimization:** Modals go full-screen on mobile, search filters collapse, notes display as cards instead of tables. Font sizes scale with viewport using `clamp()`.
+- **Filter state management:** Active filters and saved searches are managed in NotesPanel state. Filter state persists to localStorage for quick recovery on page reload. Filters are combined with search queries using AND logic.
+- **Date filtering:** Date range filters support custom date pickers with ISO-8601 instant format (`YYYY-MM-DDTHH:MM:SSZ`). Backend validates date ranges and returns 400 for invalid formats.
+- **Tag filtering:** Multi-select tag filter automatically populates from tags in the user's notes. A note matches if it has ALL selected tags. Combine multiple tags for powerful filtering.
+- **Smart collections:** Pre-built collections (Untagged, Pinned, Modified today, Oldest unmodified) update dynamically as notes are created/edited. Display note counts to help users navigate quickly.
+- **Pinned notes:** Use the star icon in notes list or edit modal to pin/unpin notes as favorites. Pinned notes are easily filterable and appear first in custom collection.
 
 ## Technologies Used
 
