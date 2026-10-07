@@ -3,6 +3,7 @@ package com.notary.resource;
 import com.notary.entity.Note;
 import com.notary.entity.User;
 import jakarta.inject.Inject;
+import jakarta.persistence.Query;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
@@ -14,6 +15,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -49,24 +51,62 @@ public class NoteResource {
         return caller.superuser || note.ownerId.equals(caller.id);
     }
 
-    /** List notes. Superusers see all; regular users see only their own. */
+    /**
+     * List notes. Superusers see all; regular users see only their own.
+     *
+     * Optional full-text search:
+     *   q              - search text
+     *   searchTitles   - search the title (default false)
+     *   searchContent  - search the note content (default false)
+     * If q is provided, at least one of searchTitles / searchContent must be true (else 400).
+     */
     @GET
-    public Response list() {
+    @SuppressWarnings("unchecked")
+    public Response list(@QueryParam("q") String q,
+                         @QueryParam("searchTitles") @jakarta.ws.rs.DefaultValue("false") boolean searchTitles,
+                         @QueryParam("searchContent") @jakarta.ws.rs.DefaultValue("false") boolean searchContent) {
         User user = getAuthenticatedUser();
         if (user == null) {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
-        List<Note> notes;
-        if (user.superuser) {
-            // Superuser sees all notes, sorted by createdAt descending
-            notes = Note.findAll().sort("createdAt desc").list();
-        } else {
-            // Regular user sees only their own notes
-            notes = Note.find("ownerId", user.id)
-                    .sort("createdAt desc")
-                    .list();
+
+        boolean hasQuery = q != null && !q.isBlank();
+        if (!hasQuery) {
+            List<Note> notes;
+            if (user.superuser) {
+                notes = Note.findAll().sort("createdAt desc").list();
+            } else {
+                notes = Note.find("ownerId", user.id).sort("createdAt desc").list();
+            }
+            return Response.ok(notes).build();
         }
-        return Response.ok(notes).build();
+
+        if (!searchTitles && !searchContent) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Select at least one of searchTitles or searchContent").build();
+        }
+
+        StringBuilder sql = new StringBuilder("SELECT n.* FROM notes n WHERE (");
+        if (searchTitles) {
+            sql.append("n.title_tsv @@ plainto_tsquery('english', :q)");
+        }
+        if (searchContent) {
+            if (searchTitles) sql.append(" OR ");
+            sql.append("n.content_tsv @@ plainto_tsquery('english', :q)");
+        }
+        sql.append(")");
+        if (!user.superuser) {
+            sql.append(" AND n.owner_id = :owner");
+        }
+        sql.append(" ORDER BY n.created_at DESC");
+
+        Query query = Note.getEntityManager().createNativeQuery(sql.toString(), Note.class);
+        query.setParameter("q", q.trim());
+        if (!user.superuser) {
+            query.setParameter("owner", user.id);
+        }
+        List<Note> results = query.getResultList();
+        return Response.ok(results).build();
     }
 
     @GET

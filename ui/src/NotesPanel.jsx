@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Group, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton } from '@mantine/core'
-import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react'
+import { Alert, Button, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton } from '@mantine/core'
+import { IconChevronDown, IconChevronUp, IconSearch, IconSelector } from '@tabler/icons-react'
 import { RichTextEditor } from '@mantine/tiptap'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -13,6 +13,7 @@ import { Markdown } from '@tiptap/extension-markdown'
 import { notesApi } from './api'
 
 const EMPTY_FORM = { title: '', content: '' }
+const DEFAULT_SEARCH = { q: '', searchTitles: true, searchContent: true }
 
 function MarkdownEditor({ value, onChange }) {
   const editor = useEditor({
@@ -117,9 +118,15 @@ export default function NotesPanel() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
 
-  const load = useCallback(async () => {
+  // Search form state (what the user is typing/selecting)
+  const [search, setSearch] = useState(DEFAULT_SEARCH)
+  // Search that is currently applied to the list (null = no active search)
+  const [activeSearch, setActiveSearch] = useState(null)
+  const [helpOpened, setHelpOpened] = useState(false)
+
+  const load = useCallback(async (searchParams) => {
     try {
-      setNotes(await notesApi.list())
+      setNotes(await notesApi.list(searchParams))
       setError(null)
     } catch (e) {
       if (e.status === 401) {
@@ -131,8 +138,32 @@ export default function NotesPanel() {
   }, [])
 
   useEffect(() => {
-    load()
+    load(activeSearch)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load])
+
+  const reload = () => load(activeSearch)
+
+  const runSearch = async () => {
+    if (!search.q.trim()) {
+      // Empty search text: clear the search and show all notes.
+      setActiveSearch(null)
+      await load(null)
+      return
+    }
+    if (!search.searchTitles && !search.searchContent) {
+      setHelpOpened(true)
+      return
+    }
+    setActiveSearch(search)
+    await load(search)
+  }
+
+  const clearSearch = async () => {
+    setSearch(DEFAULT_SEARCH)
+    setActiveSearch(null)
+    await load(null)
+  }
 
   const toggleSort = (field) =>
     setSort((s) =>
@@ -190,7 +221,7 @@ export default function NotesPanel() {
       }
       setOpened(false)
       setError(null)
-      await load()
+      await reload()
     } catch (e) {
       if (e.status === 401) {
         setError('Session expired. Please login again.')
@@ -207,7 +238,7 @@ export default function NotesPanel() {
     try {
       await notesApi.remove(note.id)
       setError(null)
-      await load()
+      await reload()
     } catch (e) {
       if (e.status === 401) {
         setError('Session expired. Please login again.')
@@ -222,10 +253,47 @@ export default function NotesPanel() {
       <Group justify="space-between">
         <Title order={2}>Notes</Title>
         <Group>
-          <Button variant="default" onClick={load}>Refresh</Button>
+          <Button variant="default" onClick={reload}>Refresh</Button>
           <Button onClick={openCreate}>New note</Button>
         </Group>
       </Group>
+
+      <Stack gap="xs">
+        <Group align="flex-end" wrap="nowrap">
+          <TextInput
+            style={{ flex: 1 }}
+            placeholder="Search notes..."
+            leftSection={<IconSearch size={16} />}
+            value={search.q}
+            onChange={(e) => setSearch({ ...search, q: e.currentTarget.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') runSearch()
+            }}
+          />
+          <Button onClick={runSearch}>Search</Button>
+          <Button variant="default" onClick={clearSearch} disabled={!activeSearch && !search.q}>
+            Clear
+          </Button>
+        </Group>
+        <Group gap="lg">
+          <Checkbox
+            label="Search Titles"
+            checked={search.searchTitles}
+            onChange={(e) => setSearch({ ...search, searchTitles: e.currentTarget.checked })}
+          />
+          <Checkbox
+            label="Search Note Content"
+            checked={search.searchContent}
+            onChange={(e) => setSearch({ ...search, searchContent: e.currentTarget.checked })}
+          />
+        </Group>
+      </Stack>
+
+      {activeSearch && (
+        <Text size="sm" c="dimmed">
+          {notes.length} result{notes.length === 1 ? '' : 's'} for "{activeSearch.q.trim()}"
+        </Text>
+      )}
 
       {error && (
         <Alert color="red" withCloseButton onClose={() => setError(null)}>
@@ -234,7 +302,7 @@ export default function NotesPanel() {
       )}
 
       {notes.length === 0 ? (
-        <Text c="dimmed">You have no notes yet.</Text>
+        <Text c="dimmed">{activeSearch ? 'No notes match your search.' : 'You have no notes yet.'}</Text>
       ) : (
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead>
@@ -293,7 +361,34 @@ export default function NotesPanel() {
           </Group>
         </Stack>
       </Modal>
+
+      <Modal
+        opened={helpOpened}
+        onClose={() => setHelpOpened(false)}
+        title="How to search your notes"
+      >
+        <Stack>
+          <Text>
+            Choose where to look before searching. Please check at least one of the boxes:
+          </Text>
+          <List spacing="xs">
+            <List.Item><b>Search Titles</b> &ndash; match words in note titles.</List.Item>
+            <List.Item><b>Search Note Content</b> &ndash; match words in the body of your notes.</List.Item>
+          </List>
+          <Text>
+            Check both to search titles and content together. Then type your search words and
+            press <b>Search</b> (or Enter).
+          </Text>
+          <Text size="sm" c="dimmed">
+            Search is word-based and ignores case, common words (like "the"), and word endings
+            (for example, "running" also matches "run"). All of your words must appear in the
+            same field. Clear the search box and press Search, or press Clear, to see all notes again.
+          </Text>
+          <Group justify="flex-end">
+            <Button onClick={() => setHelpOpened(false)}>Got it</Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   )
 }
-

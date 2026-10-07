@@ -33,7 +33,17 @@ export const usersApi = {
 }
 
 export const notesApi = {
-  list: () => request('/api/notes'),
+  // Optional search: { q, searchTitles, searchContent }
+  list: (search) => {
+    const q = search && search.q ? search.q.trim() : ''
+    if (!q) return request('/api/notes')
+    const params = new URLSearchParams({
+      q,
+      searchTitles: String(!!search.searchTitles),
+      searchContent: String(!!search.searchContent),
+    })
+    return request(`/api/notes?${params.toString()}`)
+  },
   get: (id) => request(`/api/notes/${id}`),
   create: (note) => request('/api/notes', { method: 'POST', body: JSON.stringify(note) }),
   update: (id, note) => request(`/api/notes/${id}`, { method: 'PUT', body: JSON.stringify(note) }),
