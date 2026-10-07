@@ -289,16 +289,21 @@ export default function NotesPanel() {
         </Group>
       </Stack>
 
-      {activeSearch && (
-        <Text size="sm" c="dimmed">
-          {notes.length} result{notes.length === 1 ? '' : 's'} for "{activeSearch.q.trim()}"
-        </Text>
-      )}
-
       {error && (
         <Alert color="red" withCloseButton onClose={() => setError(null)}>
           {error}
         </Alert>
+      )}
+
+      {activeSearch && (
+        <Stack gap="xs">
+          <Text fw={600} size="lg">
+            Search results for "{activeSearch.q.trim()}"
+          </Text>
+          <Text size="sm" c="dimmed">
+            Found {notes.length} result{notes.length === 1 ? '' : 's'}
+          </Text>
+        </Stack>
       )}
 
       {notes.length === 0 ? (
