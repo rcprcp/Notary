@@ -13,10 +13,10 @@ Notary/
 │       │   ├── entity/
 │       │   │   ├── BaseEntity.java            # Base class with UUID id and timestamps
 │       │   │   ├── User.java                  # User entity with unique name/email, theme_color, last_login, superuser flag
-│       │   │   └── Note.java                  # Note entity with title and markdown content
+│       │   │   └── Note.java                  # Note entity with title, markdown content, and space-delimited tags
 │       │   └── resource/
 │       │       ├── UserResource.java          # REST endpoints for users (CRUD + login/logout)
-│       │       └── NoteResource.java          # REST endpoints for notes (CRUD)
+│       │       └── NoteResource.java          # REST endpoints for notes (CRUD + search + import)
 │       └── resources/
 │           ├── application.properties         # Quarkus config (DB, Flyway, OpenAPI, sessions)
 │           └── db/migration/
@@ -25,14 +25,16 @@ Notary/
 │               ├── V1.0.2__add_title_to_notes.sql
 │               ├── V1.0.3__add_last_login_to_users.sql
 │               ├── V1.0.4__add_superuser_to_users.sql
-│               └── V1.0.5__insert_initial_user.sql
+│               ├── V1.0.5__insert_initial_user.sql
+│               ├── V1.0.6__add_fulltext_search_to_notes.sql
+│               └── V1.0.7__add_tags_to_notes.sql
 ├── ui/                                        # React + Vite frontend
 │   ├── src/
 │   │   ├── App.jsx                            # Main app shell with routing and logout
 │   │   ├── main.jsx                           # React entry point with session check
 │   │   ├── api.js                             # Fetch wrapper for REST API (includes credentials)
 │   │   ├── LoginPage.jsx                      # Login and signup page
-│   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor
+│   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor, tags, search, and import
 │   │   ├── ThemeButton.jsx                    # Theme color picker
 │   │   └── index.css                          # Styles
 │   ├── vite.config.js                         # Vite configuration
@@ -126,10 +128,13 @@ UPDATE users SET superuser = TRUE WHERE email = 'mickey@mickey.com';
 - `owner_id` (UUID, foreign key → users.id, ON DELETE CASCADE)
 - `title` (VARCHAR 255, required)
 - `content` (TEXT, stores markdown-formatted content, max ~10MB)
+- `tags` (VARCHAR 10000, space-delimited tags, default empty)
+- `title_tsv` (tsvector, auto-generated full-text search index on title)
+- `content_tsv` (tsvector, auto-generated full-text search index on content, truncated to 500KB)
 - `created_at` (TIMESTAMP, set on insert)
 - `updated_at` (TIMESTAMP, auto-updated on modification)
 
-Indexed on `owner_id` for efficient owner-based queries.
+Indexed on `owner_id` for efficient owner-based queries. GIN indexes on `title_tsv` and `content_tsv` for fast full-text search.
 
 ## Authentication & Session Management
 
@@ -228,7 +233,7 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Cascades to all notes owned by that user
   - Superusers can delete any user; regular users can only delete themselves
 
-### Notes
+### Notes – CRUD
 
 - `GET /api/notes` – List notes
   - **Response:** Array of note objects, sorted by `createdAt` descending
@@ -241,27 +246,66 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Returns 404 if note doesn't exist or caller lacks permission
 
 - `POST /api/notes` – Create a new note
-  - **Request body:** `{ "title": "...", "content": "..." }`
+  - **Request body:** `{ "title": "...", "content": "...", "tags": "..." }`
   - **Response:** Note object with id and timestamps
   - Returns 401 if not authenticated
   - Returns 400 if title is missing or blank
-  - Content is stored as markdown and set by the authenticated user
+  - Content is stored as markdown
+  - Tags are space-delimited and optional
   - Note is always owned by the authenticated user (ownerId is not accepted in the request)
 
 - `PUT /api/notes/{id}` – Update a note
-  - **Request body:** `{ "title": "..." }` or `{ "content": "..." }` or both
+  - **Request body:** `{ "title": "..." }` or `{ "content": "..." }` or `{ "tags": "..." }` or any combination
   - **Response:** Updated note object
   - Returns 401 if not authenticated
   - Returns 404 if note doesn't exist or caller lacks permission
   - Returns 400 if title is blank
   - Superusers can update any note; regular users can only update their own
   - Content is stored as markdown
+  - Tags are space-delimited
 
 - `DELETE /api/notes/{id}` – Delete a note
   - **Response:** 204 No Content
   - Returns 401 if not authenticated
   - Returns 404 if note doesn't exist or caller lacks permission
   - Superusers can delete any note; regular users can only delete their own
+
+### Notes – Search
+
+- `GET /api/notes?q=...&searchTitles=true&searchContent=true` – Full-text search
+  - **Query parameters:**
+    - `q` – Search query (required when searching)
+    - `searchTitles` – Search in note titles (boolean, default false)
+    - `searchContent` – Search in note content (boolean, default false)
+  - **Response:** Array of matching note objects, sorted by `createdAt` descending
+  - Returns 401 if not authenticated
+  - Returns 400 if q is provided but neither searchTitles nor searchContent is true
+  - Search is word-based, case-insensitive, and ignores common stop words (like "the")
+  - Word endings are normalized (e.g., "running" matches "run")
+  - Superusers search all notes; regular users search only their own
+
+### Notes – Import
+
+- `POST /api/notes/import/joplin` – Import from Joplin JEX archive
+  - **Content-Type:** `application/octet-stream`
+  - **Request body:** Binary .jex file (ZIP archive)
+  - **Response:** `{ "imported": N, "errors": N, "messages": [...] }`
+  - Returns 401 if not authenticated
+  - Returns 400 if file is invalid
+  - Flattens Joplin's folder hierarchy into space-delimited tags
+  - Automatically tags imported notes with folder names
+  - Extracts title from first markdown heading or uses filename
+  - Content is stored as markdown
+
+- `POST /api/notes/import/markdown` – Import a single markdown file
+  - **Content-Type:** `application/octet-stream`
+  - **Request body:** Binary .md file
+  - **Response:** Note object
+  - Returns 401 if not authenticated
+  - Returns 400 if file is invalid
+  - Extracts title from first markdown heading or first line
+  - Tags imported note with `markdown-import`
+  - Content is stored as markdown
 
 ## OpenAPI Documentation
 
@@ -289,14 +333,24 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 - **List notes** – Table with Created, Updated, and Title columns (all sortable)
   - Default sort: Created, descending (newest first)
   - Click column headers to sort; click again to reverse direction
-- **Create note** – Modal with Title and Rich Text Editor fields
+  - Tags displayed as badges below each note's title
+- **Create note** – Modal with Title, Tags, and Rich Text Editor fields
   - Title is required and shown in the list
+  - Tags are space-delimited (e.g., "joplin important work")
   - Content uses a full-featured markdown editor
 - **Edit note** – Click a row or the Edit button to open the note
-  - Modal shows both Title and Rich Text Editor
-  - Both fields can be edited with live formatting
+  - Modal shows Title, Tags, and Rich Text Editor
+  - All fields can be edited with live formatting
   - Only changed fields are sent to the server on update
 - **Delete note** – Confirmation shows the note's title
+
+### Tags
+- **Tags field** – Space-delimited text input in note editor
+  - Multiple tags separated by spaces (no special characters needed)
+  - Example: `joplin project-alpha important`
+  - Tags displayed as badges in the notes list
+  - Useful for organizing and categorizing notes
+  - Particularly useful with imported notes (tags preserve folder hierarchy from Joplin)
 
 ### Rich Text Editing with Markdown
 - **Formatting toolbar** – Bold, Italic, Underline, Strikethrough, Clear formatting
@@ -308,6 +362,29 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 - **Markdown storage** – Content is stored as markdown in the database, so you can use it in any markdown viewer
 - **Live preview** – Editor supports TipTap's rich text rendering with markdown shortcuts
 
+### Full-Text Search
+- **Search bar** – Type your search query
+- **Search checkboxes** – Choose where to search:
+  - **Search Titles** – Match words in note titles
+  - **Search Note Content** – Match words in note content
+  - Both can be checked together for comprehensive search
+- **Search results** – Shows matching notes with result count
+- **Smart search** – Word-based, case-insensitive, ignores common words and word endings
+- **Help modal** – Click search with no checkboxes to see instructions
+
+### Import Notes
+- **Import button** – Upload notes from external sources
+- **Joplin JEX import** – Import entire note collections from Joplin
+  - Upload .jex files (Joplin's native export format)
+  - Preserves folder structure as space-delimited tags
+  - Extracts title from markdown headings
+  - Shows import progress and results
+- **Markdown import** – Import individual markdown files
+  - Upload .md files
+  - Extracts title from first markdown heading or line
+  - Automatically tagged with `markdown-import`
+  - Preserves all markdown formatting
+
 ### Theme Selection
 - **"Theme" button** – Choose from 14 Mantine color palettes
   - Saved to the user's account and restored on login
@@ -315,6 +392,7 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 ### Superuser Features (if applicable)
 - If you are a superuser, `GET /api/notes` returns all notes from all users
 - You can view, edit, and delete any user's notes
+- You can search across all users' notes
 - You can view and manage all user accounts via API (no UI for user management in this release)
 
 ## Building for Production
@@ -381,6 +459,8 @@ npm run dev
 - **Login tracking:** Each successful login via `POST /api/users/login` updates the user's `last_login` timestamp.
 - **Session security:** Session cookies are HttpOnly and SameSite=Strict; the browser handles them automatically.
 - **Markdown in notes:** Content is stored as markdown, so you can export, version control, and sync notes easily.
+- **Tags and search:** Tags are space-delimited and searchable via the full-text search feature.
+- **Importing notes:** Use the Import feature to migrate notes from Joplin or upload individual markdown files. Imports automatically preserve metadata and convert folder structures to tags.
 
 ## Technologies Used
 
@@ -392,6 +472,7 @@ npm run dev
 - **Flyway** – database schema versioning and migration
 - **BCrypt** (Quarkus Elytron) – password hashing and verification
 - **SmallRye OpenAPI** – automatic OpenAPI 3.0 spec generation and Swagger UI
+- **Jackson** – JSON processing for import parsing
 
 ### Frontend
 - **React** 18 – UI library
