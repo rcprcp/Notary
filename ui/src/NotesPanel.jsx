@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Button, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton, Badge, FileInput, Loader } from '@mantine/core'
-import { IconCheck, IconChevronDown, IconChevronUp, IconSearch, IconSelector, IconUpload } from '@tabler/icons-react'
+import { Alert, Button, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton, Badge, FileInput, Loader, Card, SimpleGrid } from '@mantine/core'
+import { IconCheck, IconChevronDown, IconChevronUp, IconSearch, IconSelector, IconUpload, IconMenu2, IconX } from '@tabler/icons-react'
+import { useMediaQuery } from '@mantine/hooks'
 import { RichTextEditor } from '@mantine/tiptap'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -135,10 +136,41 @@ function AutoSaveStatus({ status, lastSaved }) {
   return <Text size="xs" c="dimmed">Changes are saved automatically.</Text>
 }
 
+// Mobile card view for a single note
+function NoteCard({ note, onEdit, onDelete }) {
+  return (
+    <Card shadow="sm" padding="md" radius="md" withBorder onClick={() => onEdit(note)} style={{ cursor: 'pointer' }}>
+      <Stack gap="xs">
+        <div>
+          <Text fw={500} size="sm" c="dimmed">Created: {new Date(note.createdAt).toLocaleDateString()}</Text>
+          <Text fw={500} size="sm" c="dimmed">Updated: {new Date(note.updatedAt).toLocaleDateString()}</Text>
+        </div>
+        <div>
+          <Text fw={600} size="md" lineClamp={2}>
+            {note.title || <Text c="dimmed" fs="italic">Untitled</Text>}
+          </Text>
+          {note.tags && (
+            <Group gap="xs" mt="xs">
+              {note.tags.split(' ').filter(t => t.length > 0).map((tag, idx) => (
+                <Badge key={idx} size="sm" variant="light">{tag}</Badge>
+              ))}
+            </Group>
+          )}
+        </div>
+        <Group gap="xs" justify="flex-end">
+          <Button size="xs" variant="light" onClick={(e) => { e.stopPropagation(); onEdit(note) }}>Edit</Button>
+          <Button size="xs" variant="light" color="red" onClick={(e) => { e.stopPropagation(); onDelete(note) }}>Delete</Button>
+        </Group>
+      </Stack>
+    </Card>
+  )
+}
+
 const TEXT_FIELDS = ['title']
 
 // Notes of the authenticated user. No owner selection needed.
 export default function NotesPanel() {
+  const isMobile = useMediaQuery('(max-width: 768px)')
   const [notes, setNotes] = useState([])
   const [sort, setSort] = useState({ field: 'createdAt', dir: 'desc' })
   const [error, setError] = useState(null)
@@ -164,6 +196,7 @@ export default function NotesPanel() {
   // Search that is currently applied to the list (null = no active search)
   const [activeSearch, setActiveSearch] = useState(null)
   const [helpOpened, setHelpOpened] = useState(false)
+  const [searchExpanded, setSearchExpanded] = useState(false)
 
   // Import states
   const [importModalOpened, setImportModalOpened] = useState(false)
@@ -449,20 +482,22 @@ export default function NotesPanel() {
   }
 
   return (
-    <Stack gap="md">
-      <Group justify="space-between">
-        <Title order={2}>Notes</Title>
-        <Group>
-          <Button variant="default" onClick={reload}>Refresh</Button>
-          <Button variant="light" onClick={() => setImportModalOpened(true)} leftSection={<IconUpload size={16} />}>
+    <Stack gap="md" p={{ base: 'sm', sm: 'md' }}>
+      {/* Header */}
+      <Group justify="space-between" align="center">
+        <Title order={2} size={{ base: 'h3', sm: 'h2' }}>Notes</Title>
+        <Group gap={{ base: 'xs', sm: 'md' }} wrap="nowrap">
+          <Button variant="default" onClick={reload} size={{ base: 'xs', sm: 'sm' }}>Refresh</Button>
+          <Button variant="light" onClick={() => setImportModalOpened(true)} leftSection={<IconUpload size={16} />} size={{ base: 'xs', sm: 'sm' }}>
             Import
           </Button>
-          <Button onClick={openCreate}>New note</Button>
+          <Button onClick={openCreate} size={{ base: 'xs', sm: 'sm' }}>New</Button>
         </Group>
       </Group>
 
+      {/* Search Section */}
       <Stack gap="xs">
-        <Group align="flex-end" wrap="nowrap">
+        <Group align="flex-end" wrap="nowrap" gap={{ base: 'xs', sm: 'md' }}>
           <TextInput
             style={{ flex: 1 }}
             placeholder="Search notes..."
@@ -472,26 +507,59 @@ export default function NotesPanel() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') runSearch()
             }}
+            size={{ base: 'sm', sm: 'md' }}
           />
-          <Button onClick={runSearch}>Search</Button>
-          <Button variant="default" onClick={clearSearch} disabled={!activeSearch && !search.q}>
+          <Button onClick={runSearch} size={{ base: 'xs', sm: 'sm' }}>Search</Button>
+          <Button variant="default" onClick={clearSearch} disabled={!activeSearch && !search.q} size={{ base: 'xs', sm: 'sm' }}>
             Clear
           </Button>
         </Group>
-        <Group gap="lg">
-          <Checkbox
-            label="Search Titles"
-            checked={search.searchTitles}
-            onChange={(e) => setSearch({ ...search, searchTitles: e.currentTarget.checked })}
-          />
-          <Checkbox
-            label="Search Note Content"
-            checked={search.searchContent}
-            onChange={(e) => setSearch({ ...search, searchContent: e.currentTarget.checked })}
-          />
-        </Group>
+
+        {/* Search Filters - Collapsible on mobile */}
+        {isMobile ? (
+          <>
+            <Button
+              variant="subtle"
+              size="xs"
+              onClick={() => setSearchExpanded(!searchExpanded)}
+              rightSection={searchExpanded ? <IconX size={14} /> : <IconMenu2 size={14} />}
+            >
+              Search Options
+            </Button>
+            {searchExpanded && (
+              <Group gap="lg">
+                <Checkbox
+                  label="Search Titles"
+                  checked={search.searchTitles}
+                  onChange={(e) => setSearch({ ...search, searchTitles: e.currentTarget.checked })}
+                  size="sm"
+                />
+                <Checkbox
+                  label="Search Content"
+                  checked={search.searchContent}
+                  onChange={(e) => setSearch({ ...search, searchContent: e.currentTarget.checked })}
+                  size="sm"
+                />
+              </Group>
+            )}
+          </>
+        ) : (
+          <Group gap="lg">
+            <Checkbox
+              label="Search Titles"
+              checked={search.searchTitles}
+              onChange={(e) => setSearch({ ...search, searchTitles: e.currentTarget.checked })}
+            />
+            <Checkbox
+              label="Search Note Content"
+              checked={search.searchContent}
+              onChange={(e) => setSearch({ ...search, searchContent: e.currentTarget.checked })}
+            />
+          </Group>
+        )}
       </Stack>
 
+      {/* Alerts */}
       {error && (
         <Alert color="red" withCloseButton onClose={() => setError(null)}>
           {error}
@@ -500,7 +568,7 @@ export default function NotesPanel() {
 
       {activeSearch && (
         <Stack gap="xs">
-          <Text fw={600} size="lg">
+          <Text fw={600} size={{ base: 'md', sm: 'lg' }}>
             Search results for "{activeSearch.q.trim()}"
           </Text>
           <Text size="sm" c="dimmed">
@@ -509,9 +577,18 @@ export default function NotesPanel() {
         </Stack>
       )}
 
+      {/* Notes Display */}
       {notes.length === 0 ? (
-        <Text c="dimmed">{activeSearch ? 'No notes match your search.' : 'You have no notes yet.'}</Text>
+        <Text c="dimmed" ta="center" py="xl">{activeSearch ? 'No notes match your search.' : 'You have no notes yet.'}</Text>
+      ) : isMobile ? (
+        // Mobile: Card view
+        <SimpleGrid cols={1} spacing="md">
+          {sortedNotes.map((n) => (
+            <NoteCard key={n.id} note={n} onEdit={openEdit} onDelete={remove} />
+          ))}
+        </SimpleGrid>
       ) : (
+        // Desktop: Table view
         <Table striped highlightOnHover withTableBorder>
           <Table.Thead>
             <Table.Tr>
@@ -550,13 +627,15 @@ export default function NotesPanel() {
         </Table>
       )}
 
+      {/* Edit/Create Modal */}
       <Modal
         opened={opened}
         onClose={closeModal}
         title={editingNote ? 'Edit note' : 'New note'}
-        size="lg"
+        size={{ base: 'sm', sm: 'md', md: 'lg' }}
+        fullScreen={isMobile}
       >
-        <Stack>
+        <Stack gap="md">
           <TextInput
             label="Title"
             required
@@ -564,6 +643,7 @@ export default function NotesPanel() {
             value={form.title}
             error={formError}
             onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
+            size={{ base: 'sm', sm: 'md' }}
           />
 
           <TextInput
@@ -572,6 +652,7 @@ export default function NotesPanel() {
             maxLength={10000}
             value={form.tags}
             onChange={(e) => setForm({ ...form, tags: e.currentTarget.value })}
+            size={{ base: 'sm', sm: 'md' }}
           />
 
           <div>
@@ -582,25 +663,26 @@ export default function NotesPanel() {
             />
           </div>
 
-          <Group justify="space-between">
+          <Stack gap="xs">
             {editingNote ? (
               <AutoSaveStatus status={autoSaveStatus} lastSaved={lastSaved} />
             ) : (
               <Text size="xs" c="dimmed">Auto-save starts after the note is created.</Text>
             )}
-            <Group>
-              <Button variant="default" onClick={closeModal}>{editingNote ? 'Close' : 'Cancel'}</Button>
-              <Button onClick={save} loading={saving}>{editingNote ? 'Update' : 'Create'}</Button>
+            <Group justify={isMobile ? 'flex-end' : 'space-between'} gap="xs">
+              <Button variant="default" onClick={closeModal} size={{ base: 'sm', sm: 'md' }}>{editingNote ? 'Close' : 'Cancel'}</Button>
+              <Button onClick={save} loading={saving} size={{ base: 'sm', sm: 'md' }}>{editingNote ? 'Update' : 'Create'}</Button>
             </Group>
-          </Group>
+          </Stack>
         </Stack>
       </Modal>
 
+      {/* Import Modal */}
       <Modal
         opened={importModalOpened}
         onClose={() => setImportModalOpened(false)}
         title="Import notes"
-        size="md"
+        size={{ base: 'sm', sm: 'md' }}
       >
         <Stack>
           {importResult && (
@@ -610,7 +692,7 @@ export default function NotesPanel() {
               onClose={() => setImportResult(null)}
             >
               <Stack gap="xs">
-                <Text>
+                <Text size="sm">
                   Imported {importResult.imported} note{importResult.imported === 1 ? '' : 's'}
                   {importResult.errors > 0 && ` with ${importResult.errors} error${importResult.errors === 1 ? '' : 's'}`}
                 </Text>
@@ -628,15 +710,15 @@ export default function NotesPanel() {
           {importLoading && (
             <Stack align="center" gap="md">
               <Loader />
-              <Text c="dimmed">Importing...</Text>
+              <Text c="dimmed" size="sm">Importing...</Text>
             </Stack>
           )}
 
           {!importLoading && !importResult && (
             <Stack gap="md">
               <Stack gap="sm">
-                <Text fw={500}>Import from Joplin (.jex)</Text>
-                <Text size="sm" c="dimmed">
+                <Text fw={500} size="sm">Import from Joplin (.jex)</Text>
+                <Text size="xs" c="dimmed">
                   Export from Joplin, then upload the .jex file. Folder hierarchy will be converted to tags.
                 </Text>
                 <FileInput
@@ -644,12 +726,13 @@ export default function NotesPanel() {
                   accept=".jex"
                   onChange={handleImportJoplin}
                   disabled={importLoading}
+                  size="sm"
                 />
               </Stack>
 
               <Stack gap="sm">
-                <Text fw={500}>Import Markdown file (.md)</Text>
-                <Text size="sm" c="dimmed">
+                <Text fw={500} size="sm">Import Markdown file (.md)</Text>
+                <Text size="xs" c="dimmed">
                   Upload a single markdown file. The first line will be used as the title.
                 </Text>
                 <FileInput
@@ -657,6 +740,7 @@ export default function NotesPanel() {
                   accept=".md"
                   onChange={handleImportMarkdown}
                   disabled={importLoading}
+                  size="sm"
                 />
               </Stack>
             </Stack>
@@ -664,30 +748,32 @@ export default function NotesPanel() {
         </Stack>
       </Modal>
 
+      {/* Help Modal */}
       <Modal
         opened={helpOpened}
         onClose={() => setHelpOpened(false)}
         title="How to search your notes"
+        size={{ base: 'sm', sm: 'md' }}
       >
         <Stack>
-          <Text>
+          <Text size="sm">
             Choose where to look before searching. Please check at least one of the boxes:
           </Text>
-          <List spacing="xs">
-            <List.Item><b>Search Titles</b> &ndash; match words in note titles.</List.Item>
-            <List.Item><b>Search Note Content</b> &ndash; match words in the body of your notes.</List.Item>
+          <List spacing="xs" size="sm">
+            <List.Item><b>Search Titles</b> – match words in note titles.</List.Item>
+            <List.Item><b>Search Note Content</b> – match words in the body of your notes.</List.Item>
           </List>
-          <Text>
+          <Text size="sm">
             Check both to search titles and content together. Then type your search words and
             press <b>Search</b> (or Enter).
           </Text>
-          <Text size="sm" c="dimmed">
+          <Text size="xs" c="dimmed">
             Search is word-based and ignores case, common words (like "the"), and word endings
             (for example, "running" also matches "run"). All of your words must appear in the
             same field. Clear the search box and press Search, or press Clear, to see all notes again.
           </Text>
           <Group justify="flex-end">
-            <Button onClick={() => setHelpOpened(false)}>Got it</Button>
+            <Button onClick={() => setHelpOpened(false)} size="sm">Got it</Button>
           </Group>
         </Stack>
       </Modal>
