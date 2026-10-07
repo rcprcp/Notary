@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton, Badge, FileInput, Progress, Loader } from '@mantine/core'
-import { IconChevronDown, IconChevronUp, IconSearch, IconSelector, IconUpload } from '@tabler/icons-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, Button, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton, Badge, FileInput, Loader } from '@mantine/core'
+import { IconCheck, IconChevronDown, IconChevronUp, IconSearch, IconSelector, IconUpload } from '@tabler/icons-react'
 import { RichTextEditor } from '@mantine/tiptap'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -14,6 +14,9 @@ import { notesApi } from './api'
 
 const EMPTY_FORM = { title: '', content: '', tags: '' }
 const DEFAULT_SEARCH = { q: '', searchTitles: true, searchContent: true }
+
+// Milliseconds of typing inactivity before an existing note is auto-saved.
+const AUTOSAVE_DELAY_MS = 2000
 
 function MarkdownEditor({ value, onChange }) {
   const editor = useEditor({
@@ -105,6 +108,33 @@ function SortableTh({ label, field, sort, onSort }) {
   )
 }
 
+// Small status line shown in the edit modal while auto-save is active.
+function AutoSaveStatus({ status, lastSaved }) {
+  if (status === 'saving') {
+    return (
+      <Group gap={6}>
+        <Loader size="xs" />
+        <Text size="xs" c="dimmed">Saving...</Text>
+      </Group>
+    )
+  }
+  if (status === 'error') {
+    return <Text size="xs" c="red">Auto-save failed. Your changes are not saved yet; click Update to retry.</Text>
+  }
+  if (status === 'pending') {
+    return <Text size="xs" c="dimmed">Unsaved changes...</Text>
+  }
+  if (status === 'saved' && lastSaved) {
+    return (
+      <Group gap={4}>
+        <IconCheck size={14} color="green" />
+        <Text size="xs" c="dimmed">Saved at {lastSaved.toLocaleTimeString()}</Text>
+      </Group>
+    )
+  }
+  return <Text size="xs" c="dimmed">Changes are saved automatically.</Text>
+}
+
 const TEXT_FIELDS = ['title']
 
 // Notes of the authenticated user. No owner selection needed.
@@ -117,6 +147,17 @@ export default function NotesPanel() {
   const [editingNote, setEditingNote] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+
+  // Auto-save state (only used when editing an existing note)
+  const [autoSaveStatus, setAutoSaveStatus] = useState('idle') // idle | pending | saving | saved | error
+  const [lastSaved, setLastSaved] = useState(null)
+  const autoSaveTimerRef = useRef(null)
+  // Last values known to be persisted on the server for the note being edited.
+  const baselineRef = useRef(null)
+  // Promise of an in-flight auto-save request, so manual save/close can wait for it.
+  const inFlightRef = useRef(null)
+  // True if at least one auto-save succeeded in the current edit session (list needs refresh).
+  const autoSavedRef = useRef(false)
 
   // Search form state (what the user is typing/selecting)
   const [search, setSearch] = useState(DEFAULT_SEARCH)
@@ -190,19 +231,129 @@ export default function NotesPanel() {
     })
   }, [notes, sort])
 
+  const clearAutoSaveTimer = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
+  }
+
+  // Returns only the fields in `values` that differ from what is persisted on the server.
+  const diffFromBaseline = (values) => {
+    const base = baselineRef.current || { title: '', content: '', tags: '' }
+    const body = {}
+    const title = values.title.trim()
+    const tags = values.tags.trim()
+    if (title !== base.title) body.title = title
+    if (values.content !== base.content) body.content = values.content
+    if (tags !== base.tags) body.tags = tags
+    return body
+  }
+
   const openCreate = () => {
+    clearAutoSaveTimer()
+    baselineRef.current = null
+    autoSavedRef.current = false
+    setAutoSaveStatus('idle')
+    setLastSaved(null)
     setEditingNote(null)
     setForm(EMPTY_FORM)
     setFormError(null)
     setOpened(true)
   }
 
-  // Selecting a note shows both its title and content for editing.
+  // Selecting a note shows its title, tags and content for editing.
   const openEdit = (note) => {
+    clearAutoSaveTimer()
+    baselineRef.current = {
+      title: note.title || '',
+      content: note.content || '',
+      tags: note.tags || '',
+    }
+    autoSavedRef.current = false
+    setAutoSaveStatus('idle')
+    setLastSaved(null)
     setEditingNote(note)
     setForm({ title: note.title || '', content: note.content || '', tags: note.tags || '' })
     setFormError(null)
     setOpened(true)
+  }
+
+  // Persist pending changes of the note being edited (used by the debounce timer).
+  const performAutoSave = useCallback(async (noteId, values) => {
+    const body = diffFromBaseline(values)
+    if (Object.keys(body).length === 0) {
+      setAutoSaveStatus('saved')
+      return
+    }
+    setAutoSaveStatus('saving')
+    const request = notesApi.update(noteId, body)
+    inFlightRef.current = request
+    try {
+      await request
+      // Record what the server now has so later diffs are relative to it.
+      baselineRef.current = { ...(baselineRef.current || {}), ...body }
+      autoSavedRef.current = true
+      setLastSaved(new Date())
+      setAutoSaveStatus('saved')
+    } catch (e) {
+      setAutoSaveStatus('error')
+    } finally {
+      if (inFlightRef.current === request) inFlightRef.current = null
+    }
+  }, [])
+
+  // Debounced auto-save: runs AUTOSAVE_DELAY_MS after the last edit to an existing note.
+  useEffect(() => {
+    if (!opened || !editingNote) return undefined
+    const body = diffFromBaseline(form)
+    if (Object.keys(body).length === 0) return undefined
+    // Never auto-save a blank title (the server rejects it).
+    if (!form.title.trim()) return undefined
+
+    setAutoSaveStatus('pending')
+    clearAutoSaveTimer()
+    autoSaveTimerRef.current = setTimeout(() => {
+      autoSaveTimerRef.current = null
+      performAutoSave(editingNote.id, form)
+    }, AUTOSAVE_DELAY_MS)
+
+    return clearAutoSaveTimer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, opened, editingNote, performAutoSave])
+
+  // Wait for any in-flight auto-save so manual save/close don't race with it.
+  const waitForInFlight = async () => {
+    if (inFlightRef.current) {
+      try {
+        await inFlightRef.current
+      } catch (e) {
+        // error already surfaced via autoSaveStatus
+      }
+    }
+  }
+
+  const closeModal = async () => {
+    clearAutoSaveTimer()
+    await waitForInFlight()
+    // Flush any edits still waiting on the debounce timer so nothing typed is lost.
+    if (editingNote && form.title.trim()) {
+      const body = diffFromBaseline(form)
+      if (Object.keys(body).length > 0) {
+        try {
+          await notesApi.update(editingNote.id, body)
+          autoSavedRef.current = true
+        } catch (e) {
+          setError(`Failed to save note: ${e.message}`)
+        }
+      }
+    }
+    setOpened(false)
+    setAutoSaveStatus('idle')
+    if (autoSavedRef.current) {
+      autoSavedRef.current = false
+      await reload()
+    }
   }
 
   const save = async () => {
@@ -211,21 +362,22 @@ export default function NotesPanel() {
       return
     }
     setFormError(null)
+    clearAutoSaveTimer()
     setSaving(true)
     try {
+      await waitForInFlight()
       if (editingNote) {
-        // Send only the fields that were modified.
-        const body = {}
-        if (form.title.trim() !== (editingNote.title || '')) body.title = form.title.trim()
-        if (form.content !== editingNote.content) body.content = form.content
-        if (form.tags !== (editingNote.tags || '')) body.tags = form.tags.trim()
+        // Send only the fields that differ from what is already saved.
+        const body = diffFromBaseline(form)
         if (Object.keys(body).length > 0) {
           await notesApi.update(editingNote.id, body)
         }
       } else {
         await notesApi.create({ title: form.title.trim(), content: form.content, tags: form.tags.trim() })
       }
+      autoSavedRef.current = false
       setOpened(false)
+      setAutoSaveStatus('idle')
       setError(null)
       await reload()
     } catch (e) {
@@ -400,7 +552,7 @@ export default function NotesPanel() {
 
       <Modal
         opened={opened}
-        onClose={() => setOpened(false)}
+        onClose={closeModal}
         title={editingNote ? 'Edit note' : 'New note'}
         size="lg"
       >
@@ -430,9 +582,16 @@ export default function NotesPanel() {
             />
           </div>
 
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setOpened(false)}>Cancel</Button>
-            <Button onClick={save} loading={saving}>{editingNote ? 'Update' : 'Create'}</Button>
+          <Group justify="space-between">
+            {editingNote ? (
+              <AutoSaveStatus status={autoSaveStatus} lastSaved={lastSaved} />
+            ) : (
+              <Text size="xs" c="dimmed">Auto-save starts after the note is created.</Text>
+            )}
+            <Group>
+              <Button variant="default" onClick={closeModal}>{editingNote ? 'Close' : 'Cancel'}</Button>
+              <Button onClick={save} loading={saving}>{editingNote ? 'Update' : 'Create'}</Button>
+            </Group>
           </Group>
         </Stack>
       </Modal>
