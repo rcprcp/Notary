@@ -1,15 +1,15 @@
-# Notary
+# NoteArray
 
 A modern note-taking application built with **Quarkus** (Java 17), **Panache ORM**, **PostgreSQL**, and a **React** UI with **Vite** and **Mantine**. Works great on desktop, tablet, and mobile devices.
 
 ## Project Structure
 
 ```
-Notary/
+NoteArray/
 ├── pom.xml                                    # Maven configuration with Java 17 and Quarkus
 ├── src/
 │   └── main/
-│       ├── java/com/notary/
+│       ├── java/com/notearray/
 │       │   ├── entity/
 │       │   │   ├── BaseEntity.java            # Base class with UUID id and timestamps
 │       │   │   ├── User.java                  # User entity with unique name/email, theme_color, last_login, superuser flag
@@ -451,12 +451,12 @@ Output: `src/main/resources/META-INF/resources/` (consumed by Quarkus)
 mvn clean package -DskipTests
 ```
 
-Output: `target/notary-1.0.0-SNAPSHOT-runner.jar`
+Output: `target/notearray-1.0.0-SNAPSHOT-runner.jar`
 
 ### Run the JAR
 
 ```bash
-java -jar target/notary-1.0.0-SNAPSHOT-runner.jar
+java -jar target/notearray-1.0.0-SNAPSHOT-runner.jar
 ```
 
 The app will be available at `http://localhost:8080` with both the backend API and the built UI.

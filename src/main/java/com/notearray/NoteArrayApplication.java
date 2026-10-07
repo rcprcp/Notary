@@ -1,8 +1,8 @@
-package com.notary;
+package com.notearray;
 
 import jakarta.ws.rs.ApplicationPath;
 import jakarta.ws.rs.core.Application;
 
 @ApplicationPath("/")
-public class NotaryApplication extends Application {
+public class NoteArrayApplication extends Application {
 }

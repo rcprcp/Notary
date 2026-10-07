@@ -1,7 +1,7 @@
-package com.notary.resource;
+package com.notearray.resource;
 
-import com.notary.entity.Note;
-import com.notary.entity.User;
+import com.notearray.entity.Note;
+import com.notearray.entity.User;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.inject.Inject;
 import jakarta.servlet.http.HttpServletRequest;

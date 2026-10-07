@@ -1,4 +1,4 @@
-package com.notary.entity;
+package com.notearray.entity;
 
 import io.quarkus.panache.common.Sort;
 import jakarta.persistence.Column;
