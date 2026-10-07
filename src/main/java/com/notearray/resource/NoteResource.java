@@ -1,7 +1,7 @@
-package com.notary.resource;
+package com.notearray.resource;
 
-import com.notary.entity.Note;
-import com.notary.entity.User;
+import com.notearray.entity.Note;
+import com.notearray.entity.User;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.inject.Inject;

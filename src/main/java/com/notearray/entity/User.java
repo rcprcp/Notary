@@ -1,4 +1,4 @@
-package com.notary.entity;
+package com.notearray.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;

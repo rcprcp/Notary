@@ -14,7 +14,7 @@ export default function App({ themeColor, onThemeChange, currentUser, onLogin, o
     <Stack gap={0} style={{ minHeight: '100vh' }}>
       <Header height={60} withBorder p="md">
         <Group justify="space-between">
-          <Title order={1}>Notary</Title>
+          <Title order={1}>NoteArray</Title>
           <Group>
             <ThemeButton value={themeColor} onThemeChange={onThemeChange} />
             <Button variant="light" onClick={onLogout}>Logout</Button>

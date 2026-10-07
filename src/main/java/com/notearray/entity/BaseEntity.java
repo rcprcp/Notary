@@ -1,4 +1,4 @@
-package com.notary.entity;
+package com.notearray.entity;
 
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;

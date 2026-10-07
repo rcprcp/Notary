@@ -6,11 +6,25 @@ import App from './App'
 import { usersApi } from './api'
 import '@mantine/core/styles.css'
 
-const THEME_KEY = 'notary-theme-color'
+const THEME_KEY = 'notearray-theme-color'
+const LEGACY_THEME_KEY = 'notary-theme-color'
+
+function getInitialThemeColor() {
+  const savedColor = localStorage.getItem(THEME_KEY)
+  if (savedColor) return savedColor
+
+  const legacyColor = localStorage.getItem(LEGACY_THEME_KEY)
+  if (legacyColor) {
+    localStorage.setItem(THEME_KEY, legacyColor)
+    return legacyColor
+  }
+
+  return 'blue'
+}
 
 // SPA shell. Session is managed via HttpOnly cookies.
 function Root() {
-  const [themeColor, setThemeColor] = useState(() => localStorage.getItem(THEME_KEY) || 'blue')
+  const [themeColor, setThemeColor] = useState(getInitialThemeColor)
   const [currentUser, setCurrentUser] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
 

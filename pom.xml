@@ -4,10 +4,10 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.notary</groupId>
-    <artifactId>notary</artifactId>
+    <groupId>com.notearray</groupId>
+    <artifactId>notearray</artifactId>
     <version>1.0.0-SNAPSHOT</version>
-    <name>Notary</name>
+    <name>NoteArray</name>
     <description>Quarkus application with Panache and PostgreSQL</description>
 
     <properties>
