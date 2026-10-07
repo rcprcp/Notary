@@ -34,15 +34,25 @@ export const usersApi = {
 
 export const notesApi = {
   // Optional search: { q, searchTitles, searchContent }
-  list: (search) => {
+  // Optional filters: { tags: [], untagged, pinned, createdFrom, createdTo, updatedFrom, updatedTo }
+  list: (search, filters) => {
+    const params = new URLSearchParams()
     const q = search && search.q ? search.q.trim() : ''
-    if (!q) return request('/api/notes')
-    const params = new URLSearchParams({
-      q,
-      searchTitles: String(!!search.searchTitles),
-      searchContent: String(!!search.searchContent),
-    })
-    return request(`/api/notes?${params.toString()}`)
+    if (q) {
+      params.set('q', q)
+      params.set('searchTitles', String(!!search.searchTitles))
+      params.set('searchContent', String(!!search.searchContent))
+    }
+    if (filters) {
+      ;(filters.tags || []).forEach((t) => params.append('tags', t))
+      if (filters.untagged) params.set('untagged', 'true')
+      if (filters.pinned) params.set('pinned', 'true')
+      for (const key of ['createdFrom', 'createdTo', 'updatedFrom', 'updatedTo']) {
+        if (filters[key]) params.set(key, filters[key])
+      }
+    }
+    const qs = params.toString()
+    return request(qs ? `/api/notes?${qs}` : '/api/notes')
   },
   get: (id) => request(`/api/notes/${id}`),
   create: (note) => request('/api/notes', { method: 'POST', body: JSON.stringify(note) }),

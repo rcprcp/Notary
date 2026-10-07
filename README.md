@@ -270,6 +270,14 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Returns 404 if note doesn't exist or caller lacks permission
   - Superusers can delete any note; regular users can only delete their own
 
+### Notes – Filters
+- **GET** `/api/notes` also accepts filter parameters, combined with AND (and with the search above):
+  - `tags` – repeatable; a note must have every listed tag
+  - `untagged` – `true` to return only notes without tags
+  - `pinned` – `true` to return only pinned notes
+  - `createdFrom` / `createdTo`, `updatedFrom` / `updatedTo` – ISO-8601 instants (inclusive range); invalid values return 400
+- **PUT** `/api/notes/{id}` accepts `{ "pinned": true|false }` to pin or unpin a note
+
 ### Notes – Search
 
 - `GET /api/notes?q=...&searchTitles=true&searchContent=true` – Full-text search
@@ -397,6 +405,14 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 - **Blockquotes** – Quote formatting
 - **Markdown storage** – Content is stored as markdown in the database, so you can use it in any markdown viewer
 - **Live preview** – Editor supports TipTap's rich text rendering with markdown shortcuts
+
+### Advanced Filtering
+- **Filter panel** – sidebar on desktop, collapsible "Filters" section on mobile
+  - Date range (last 7 days, 30 days, or custom range) on modified or created date
+  - Multi-select tags filter
+  - Smart collections with note counts: Untagged, Pinned, Modified today, Oldest unmodified (30+ days)
+- **Active filter badges** with clear buttons, an active filter count, and a "Clear all filters" button
+- **Saved searches** – save the current search and filters under a name, re-apply or delete them; stored in browser localStorage together with your last used filters
 
 ### Full-Text Search
 - **Search bar** – Type your search query

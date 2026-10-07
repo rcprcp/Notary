@@ -29,6 +29,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -49,7 +51,7 @@ public class NoteResource {
     ObjectMapper objectMapper;
 
     /** Request body. ownerId is ignored; owner is always the authenticated user. */
-    public record NoteRequest(String title, String content, String tags) {}
+    public record NoteRequest(String title, String content, String tags, Boolean pinned) {}
 
     public record ImportResult(int imported, int errors, List<String> messages) {}
 
@@ -78,54 +80,97 @@ public class NoteResource {
      *   searchTitles   - search the title (default false)
      *   searchContent  - search the note content (default false)
      * If q is provided, at least one of searchTitles / searchContent must be true (else 400).
+     *
+     * Optional filters (all combined with AND):
+     *   tags           - repeatable; note must have every listed tag
+     *   untagged       - only notes without tags
+     *   pinned         - only pinned notes
+     *   createdFrom / createdTo - ISO-8601 instants, inclusive range on creation time
+     *   updatedFrom / updatedTo - ISO-8601 instants, inclusive range on modification time
      */
     @GET
     @SuppressWarnings("unchecked")
     public Response list(@QueryParam("q") String q,
                          @QueryParam("searchTitles") @jakarta.ws.rs.DefaultValue("false") boolean searchTitles,
-                         @QueryParam("searchContent") @jakarta.ws.rs.DefaultValue("false") boolean searchContent) {
+                         @QueryParam("searchContent") @jakarta.ws.rs.DefaultValue("false") boolean searchContent,
+                         @QueryParam("tags") List<String> tags,
+                         @QueryParam("untagged") @jakarta.ws.rs.DefaultValue("false") boolean untagged,
+                         @QueryParam("pinned") @jakarta.ws.rs.DefaultValue("false") boolean pinned,
+                         @QueryParam("createdFrom") String createdFrom,
+                         @QueryParam("createdTo") String createdTo,
+                         @QueryParam("updatedFrom") String updatedFrom,
+                         @QueryParam("updatedTo") String updatedTo) {
         User user = getAuthenticatedUser();
         if (user == null) {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         }
 
         boolean hasQuery = q != null && !q.isBlank();
-        if (!hasQuery) {
-            List<Note> notes;
-            if (user.superuser) {
-                notes = Note.findAll().sort("createdAt desc").list();
-            } else {
-                notes = Note.find("ownerId", user.id).sort("createdAt desc").list();
-            }
-            return Response.ok(notes).build();
-        }
-
-        if (!searchTitles && !searchContent) {
+        if (hasQuery && !searchTitles && !searchContent) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("Select at least one of searchTitles or searchContent").build();
         }
 
-        StringBuilder sql = new StringBuilder("SELECT n.* FROM notes n WHERE (");
-        if (searchTitles) {
-            sql.append("n.title_tsv @@ plainto_tsquery('english', :q)");
+        Instant cFrom, cTo, uFrom, uTo;
+        try {
+            cFrom = parseInstant(createdFrom);
+            cTo = parseInstant(createdTo);
+            uFrom = parseInstant(updatedFrom);
+            uTo = parseInstant(updatedTo);
+        } catch (DateTimeParseException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Dates must be ISO-8601 instants, e.g. 2024-01-31T00:00:00Z").build();
         }
-        if (searchContent) {
-            if (searchTitles) sql.append(" OR ");
-            sql.append("n.content_tsv @@ plainto_tsquery('english', :q)");
+
+        StringBuilder sql = new StringBuilder("SELECT n.* FROM notes n WHERE 1=1");
+        Map<String, Object> params = new HashMap<>();
+        if (hasQuery) {
+            sql.append(" AND (");
+            if (searchTitles) {
+                sql.append("n.title_tsv @@ plainto_tsquery('english', :q)");
+            }
+            if (searchContent) {
+                if (searchTitles) sql.append(" OR ");
+                sql.append("n.content_tsv @@ plainto_tsquery('english', :q)");
+            }
+            sql.append(")");
+            params.put("q", q.trim());
         }
-        sql.append(")");
         if (!user.superuser) {
             sql.append(" AND n.owner_id = :owner");
+            params.put("owner", user.id);
         }
+        if (untagged) {
+            sql.append(" AND btrim(coalesce(n.tags, '')) = ''");
+        }
+        if (pinned) {
+            sql.append(" AND n.pinned = true");
+        }
+        int i = 0;
+        if (tags != null) {
+            for (String tag : tags) {
+                if (tag == null || tag.isBlank()) continue;
+                String escaped = tag.trim().toLowerCase()
+                        .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+                String name = "tag" + i++;
+                sql.append(" AND (' ' || lower(coalesce(n.tags, '')) || ' ') LIKE :").append(name);
+                params.put(name, "% " + escaped + " %");
+            }
+        }
+        if (cFrom != null) { sql.append(" AND n.created_at >= :cFrom"); params.put("cFrom", cFrom); }
+        if (cTo != null) { sql.append(" AND n.created_at <= :cTo"); params.put("cTo", cTo); }
+        if (uFrom != null) { sql.append(" AND n.updated_at >= :uFrom"); params.put("uFrom", uFrom); }
+        if (uTo != null) { sql.append(" AND n.updated_at <= :uTo"); params.put("uTo", uTo); }
         sql.append(" ORDER BY n.created_at DESC");
 
         Query query = Note.getEntityManager().createNativeQuery(sql.toString(), Note.class);
-        query.setParameter("q", q.trim());
-        if (!user.superuser) {
-            query.setParameter("owner", user.id);
-        }
+        params.forEach(query::setParameter);
         List<Note> results = query.getResultList();
         return Response.ok(results).build();
+    }
+
+    private static Instant parseInstant(String value) {
+        return value == null || value.isBlank() ? null : Instant.parse(value.trim());
     }
 
     @GET
@@ -175,9 +220,10 @@ public class NoteResource {
         if (note == null || !canAccessNote(user, note)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        if (req == null || (req.title() == null && req.content() == null && req.tags() == null)) {
+        if (req == null || (req.title() == null && req.content() == null && req.tags() == null
+                && req.pinned() == null)) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("title, content, or tags is required").build();
+                    .entity("title, content, tags, or pinned is required").build();
         }
         if (req.title() != null && req.title().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST).entity("title must not be blank").build();
@@ -190,6 +236,9 @@ public class NoteResource {
         }
         if (req.tags() != null) {
             note.tags = req.tags().trim();
+        }
+        if (req.pinned() != null) {
+            note.pinned = req.pinned();
         }
         return Response.ok(note).build();
     }
