@@ -34,7 +34,7 @@ Notary/
 │   │   ├── main.jsx                           # React entry point with session check
 │   │   ├── api.js                             # Fetch wrapper for REST API (includes credentials)
 │   │   ├── LoginPage.jsx                      # Login and signup page
-│   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor, tags, search, and import
+│   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor, tags, search, import, and auto-save
 │   │   ├── ThemeButton.jsx                    # Theme color picker
 │   │   └── index.css                          # Styles
 │   ├── vite.config.js                         # Vite configuration
@@ -338,6 +338,7 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
   - Title is required and shown in the list
   - Tags are space-delimited (e.g., "joplin important work")
   - Content uses a full-featured markdown editor
+  - Auto-save starts after the note is created
 - **Edit note** – Click a row or the Edit button to open the note
   - Modal shows Title, Tags, and Rich Text Editor
   - All fields can be edited with live formatting
@@ -351,6 +352,20 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
   - Tags displayed as badges in the notes list
   - Useful for organizing and categorizing notes
   - Particularly useful with imported notes (tags preserve folder hierarchy from Joplin)
+
+### Auto-Save
+- **Auto-save for existing notes** – Changes saved automatically after 2 seconds of typing inactivity
+  - No data loss: all unsaved changes are persisted to the server
+  - Status indicators:
+    - **"Saving..."** – Request in flight
+    - **"✓ Saved at HH:MM:SS"** – Recent successful save with timestamp
+    - **"Unsaved changes..."** – Changes pending the 2-second debounce timer
+    - **Error message** – Auto-save failed; click "Update" to retry
+  - New notes require manual save (click "Create"); auto-save starts after creation
+  - Manual "Update" button still available for immediate save anytime
+  - Closing the modal flushes any pending changes to prevent data loss
+  - Only changed fields are sent to the server (optimized)
+- **No data loss guarantee** – In-flight requests complete before modal closes; debounced changes flush before modal closes
 
 ### Rich Text Editing with Markdown
 - **Formatting toolbar** – Bold, Italic, Underline, Strikethrough, Clear formatting
@@ -461,6 +476,7 @@ npm run dev
 - **Markdown in notes:** Content is stored as markdown, so you can export, version control, and sync notes easily.
 - **Tags and search:** Tags are space-delimited and searchable via the full-text search feature.
 - **Importing notes:** Use the Import feature to migrate notes from Joplin or upload individual markdown files. Imports automatically preserve metadata and convert folder structures to tags.
+- **Auto-save behavior:** Changes to existing notes are automatically saved after 2 seconds of inactivity. New notes require manual save first. The debounce delay prevents excessive server requests while providing responsive save behavior. No changes are lost when closing the modal—pending changes are flushed before closing.
 
 ## Technologies Used
 
