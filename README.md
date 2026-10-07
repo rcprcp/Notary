@@ -1,6 +1,6 @@
 # Notary
 
-A modern note-taking application built with **Quarkus** (Java 17), **Panache ORM**, **PostgreSQL**, and a **React** UI with **Vite** and **Mantine**.
+A modern note-taking application built with **Quarkus** (Java 17), **Panache ORM**, **PostgreSQL**, and a **React** UI with **Vite** and **Mantine**. Works great on desktop, tablet, and mobile devices.
 
 ## Project Structure
 
@@ -28,17 +28,17 @@ Notary/
 │               ├── V1.0.5__insert_initial_user.sql
 │               ├── V1.0.6__add_fulltext_search_to_notes.sql
 │               └── V1.0.7__add_tags_to_notes.sql
-├── ui/                                        # React + Vite frontend
+├── ui/                                        # React + Vite frontend (mobile-responsive)
 │   ├── src/
 │   │   ├── App.jsx                            # Main app shell with routing and logout
 │   │   ├── main.jsx                           # React entry point with session check
 │   │   ├── api.js                             # Fetch wrapper for REST API (includes credentials)
 │   │   ├── LoginPage.jsx                      # Login and signup page
-│   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor, tags, search, import, and auto-save
+│   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor, tags, search, import, auto-save, and responsive design
 │   │   ├── ThemeButton.jsx                    # Theme color picker
-│   │   └── index.css                          # Styles
+│   │   └── index.css                          # Mobile-first responsive styles
 │   ├── vite.config.js                         # Vite configuration
-│   ├── index.html                             # HTML template
+│   ├── index.html                             # HTML template with viewport meta
 │   └── package.json                           # Node dependencies
 └── README.md
 ```
@@ -91,7 +91,7 @@ The frontend dev server will run on `http://localhost:3000` and proxy API calls 
 
 ### 4. Access the Application
 
-Open your browser to **`http://localhost:3000`**.
+Open your browser to **`http://localhost:3000`** (or access on any device on your network).
 
 You will see a login page. Use the initial test user credentials below or create a new account.
 
@@ -319,8 +319,27 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 
 ## UI Features
 
+### Responsive Design
+- **Mobile-first approach** – Works seamlessly on phones, tablets, and desktops
+- **Breakpoints:**
+  - **Mobile** (<768px) – Optimized for small screens with full-width modals, card view for notes, collapsible filters
+  - **Tablet** (768-1024px) – Balanced layout with responsive spacing
+  - **Desktop** (>1024px) – Full-featured table view with all columns visible
+- **Touch optimization** – 44px minimum touch targets on mobile, better spacing for fingers
+- **Mobile features:**
+  - Card-based note display (instead of table)
+  - Collapsible search filter buttons
+  - Full-screen modals for editing
+  - Responsive typography with `clamp()` for readability
+  - iOS/Android optimizations (no zoom on input, proper keyboard handling)
+- **All devices:**
+  - Responsive button sizing
+  - Adaptive font sizes
+  - Touch-friendly form inputs
+  - Improved focus states for accessibility
+
 ### Login & Authentication
-- **Login page** – Email and password fields
+- **Login page** – Email and password fields (responsive)
   - Invalid credentials show an error message
   - Session cookie is set on success
 - **Signup** – Create a new account from the login page
@@ -330,17 +349,19 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 - **Logout button** – Clears the session cookie and returns to login page
 
 ### Note Management
-- **List notes** – Table with Created, Updated, and Title columns (all sortable)
+- **List notes** – Responsive view that adapts to screen size
+  - **Desktop:** Table with Created, Updated, and Title columns (all sortable)
+  - **Mobile:** Card view with note title, dates, and tags
   - Default sort: Created, descending (newest first)
-  - Click column headers to sort; click again to reverse direction
+  - Click column headers (desktop) to sort; click again to reverse direction
   - Tags displayed as badges below each note's title
-- **Create note** – Modal with Title, Tags, and Rich Text Editor fields
+- **Create note** – Modal with Title, Tags, and Rich Text Editor fields (full-screen on mobile)
   - Title is required and shown in the list
   - Tags are space-delimited (e.g., "joplin important work")
   - Content uses a full-featured markdown editor
   - Auto-save starts after the note is created
 - **Edit note** – Click a row or the Edit button to open the note
-  - Modal shows Title, Tags, and Rich Text Editor
+  - Modal shows Title, Tags, and Rich Text Editor (full-screen on mobile)
   - All fields can be edited with live formatting
   - Only changed fields are sent to the server on update
 - **Delete note** – Confirmation shows the note's title
@@ -379,7 +400,9 @@ The interactive Swagger UI allows you to test all endpoints directly from your b
 
 ### Full-Text Search
 - **Search bar** – Type your search query
-- **Search checkboxes** – Choose where to search:
+- **Search checkboxes** – Choose where to search
+  - **Mobile:** Collapsible "Search Options" button to toggle checkboxes
+  - **Desktop:** Always-visible checkboxes
   - **Search Titles** – Match words in note titles
   - **Search Note Content** – Match words in note content
   - Both can be checked together for comprehensive search
@@ -438,6 +461,11 @@ java -jar target/notary-1.0.0-SNAPSHOT-runner.jar
 
 The app will be available at `http://localhost:8080` with both the backend API and the built UI.
 
+### Mobile Deployment
+- The app is fully responsive and works on mobile devices
+- Serve on your network to access from phones/tablets: `http://<your-ip>:3000` (dev) or `http://<your-ip>:8080` (production)
+- Test on multiple devices to ensure optimal experience
+
 ## Development Workflow
 
 ### Running in Development Mode
@@ -463,6 +491,24 @@ npm run dev
 
 **Access the app at `http://localhost:3000`**
 
+### Testing on Mobile Devices
+
+1. Find your machine's IP address:
+   ```bash
+   # macOS/Linux
+   ifconfig | grep "inet"
+   # Windows
+   ipconfig
+   ```
+
+2. Access from mobile device on the same network:
+   ```
+   http://<your-ip>:3000  (development)
+   http://<your-ip>:8080  (production build)
+   ```
+
+3. Use browser DevTools mobile view to test responsive breakpoints
+
 ### Development Tips
 
 - **Vite dev mode (recommended):** Run `npm run dev` in the `ui/` folder for hot-reload React changes. The dev server proxies API calls to Quarkus on port 8080, so you don't need to rebuild after each change.
@@ -470,13 +516,15 @@ npm run dev
 - **Database migrations:** Flyway runs automatically on startup. Add new migrations to `src/main/resources/db/migration/` with naming `V{version}__{description}.sql`.
 - **OpenAPI updates:** Changes to REST endpoint signatures are reflected in the OpenAPI spec automatically on next Quarkus hot-reload.
 - **Theme persistence:** The selected theme is saved to your user record in the database and restored on login.
-- **Note sorting:** Notes are sorted by creation time (newest first) by default. Click any column header in the Notes table to sort by that field.
+- **Note sorting:** Notes are sorted by creation time (newest first) by default. Click any column header in the Notes table to sort by that field (desktop only; mobile cards maintain date sort).
 - **Login tracking:** Each successful login via `POST /api/users/login` updates the user's `last_login` timestamp.
 - **Session security:** Session cookies are HttpOnly and SameSite=Strict; the browser handles them automatically.
 - **Markdown in notes:** Content is stored as markdown, so you can export, version control, and sync notes easily.
 - **Tags and search:** Tags are space-delimited and searchable via the full-text search feature.
 - **Importing notes:** Use the Import feature to migrate notes from Joplin or upload individual markdown files. Imports automatically preserve metadata and convert folder structures to tags.
 - **Auto-save behavior:** Changes to existing notes are automatically saved after 2 seconds of inactivity. New notes require manual save first. The debounce delay prevents excessive server requests while providing responsive save behavior. No changes are lost when closing the modal—pending changes are flushed before closing.
+- **Responsive design:** Mobile-first CSS approach with breakpoints at 768px and 1024px. Use browser DevTools to test different screen sizes. Touch targets are 44px minimum on mobile for accessibility.
+- **Mobile optimization:** Modals go full-screen on mobile, search filters collapse, notes display as cards instead of tables. Font sizes scale with viewport using `clamp()`.
 
 ## Technologies Used
 
@@ -494,7 +542,7 @@ npm run dev
 - **React** 18 – UI library
 - **React Router** 6 – client-side routing (HashRouter for SPA)
 - **Vite** 5 – fast build tool and dev server
-- **Mantine** 7 – UI component library with RichTextEditor
+- **Mantine** 7 – UI component library with hooks for responsive design
 - **TipTap** 2 – headless rich text editor with markdown support
 - **Tabler Icons** – icon library
 
