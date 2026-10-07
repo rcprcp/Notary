@@ -2,6 +2,8 @@ package com.notary.resource;
 
 import com.notary.entity.Note;
 import com.notary.entity.User;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.inject.Inject;
 import jakarta.persistence.Query;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,9 +21,21 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 @Path("/api/notes")
 @Produces(MediaType.APPLICATION_JSON)
@@ -31,8 +45,13 @@ public class NoteResource {
     @Context
     HttpServletRequest request;
 
+    @Inject
+    ObjectMapper objectMapper;
+
     /** Request body. ownerId is ignored; owner is always the authenticated user. */
-    public record NoteRequest(String title, String content) {}
+    public record NoteRequest(String title, String content, String tags) {}
+
+    public record ImportResult(int imported, int errors, List<String> messages) {}
 
     /** Get the authenticated user from the session. Returns null if not logged in. */
     private User getAuthenticatedUser() {
@@ -139,6 +158,7 @@ public class NoteResource {
         note.ownerId = user.id;
         note.title = req.title().trim();
         note.content = req.content();
+        note.tags = (req.tags() != null) ? req.tags().trim() : "";
         note.persist();
         return Response.created(URI.create("/api/notes/" + note.id)).entity(note).build();
     }
@@ -155,9 +175,9 @@ public class NoteResource {
         if (note == null || !canAccessNote(user, note)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        if (req == null || (req.title() == null && req.content() == null)) {
+        if (req == null || (req.title() == null && req.content() == null && req.tags() == null)) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("title or content is required").build();
+                    .entity("title, content, or tags is required").build();
         }
         if (req.title() != null && req.title().isBlank()) {
             return Response.status(Response.Status.BAD_REQUEST).entity("title must not be blank").build();
@@ -167,6 +187,9 @@ public class NoteResource {
         }
         if (req.content() != null) {
             note.content = req.content();
+        }
+        if (req.tags() != null) {
+            note.tags = req.tags().trim();
         }
         return Response.ok(note).build();
     }
@@ -186,5 +209,151 @@ public class NoteResource {
         return note.delete() > 0
                 ? Response.noContent().build()
                 : Response.status(Response.Status.NOT_FOUND).build();
+    }
+
+    /**
+     * Import a Joplin JEX file (ZIP archive).
+     * Flattens folder hierarchy into space-delimited tags.
+     */
+    @POST
+    @Path("/import/joplin")
+    @Consumes(MediaType.APPLICATION_OCTET_STREAM)
+    @Transactional
+    public Response importJoplin(InputStream jexStream) {
+        User user = getAuthenticatedUser();
+        if (user == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+
+        List<String> messages = new ArrayList<>();
+        int imported = 0;
+        int errors = 0;
+
+        try {
+            Map<String, String> folderMap = new HashMap<>(); // folderID -> folderTitle
+            Map<String, String> noteMap = new HashMap<>();   // noteID -> folderPath (tag)
+
+            ZipInputStream zis = new ZipInputStream(jexStream);
+            ZipEntry entry;
+            byte[] buffer = new byte[1024];
+
+            // First pass: collect folder hierarchy
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.getName().endsWith(".md")) continue;
+                if (!entry.getName().endsWith(".json")) continue;
+
+                String content = readZipEntryAsString(zis, buffer);
+                try {
+                    JsonNode node = objectMapper.readTree(content);
+                    String type = node.has("type_") ? node.get("type_").asText() : "";
+
+                    if ("2".equals(type)) { // Folder type
+                        String id = node.has("id") ? node.get("id").asText() : "";
+                        String title = node.has("title") ? node.get("title").asText() : "Untitled";
+                        if (!id.isEmpty()) {
+                            folderMap.put(id, title);
+                        }
+                    }
+                } catch (Exception e) {
+                    messages.add("Warning: Could not parse metadata file");
+                }
+            }
+
+            // Second pass: import notes
+            jexStream = Files.newInputStream(Files.createTempFile("joplin", ".jex"));
+            zis = new ZipInputStream(jexStream);
+
+            while ((entry = zis.getNextEntry()) != null) {
+                if (!entry.getName().endsWith(".md")) continue;
+
+                try {
+                    String content = readZipEntryAsString(zis, buffer);
+                    String filename = entry.getName();
+                    String noteId = filename.substring(0, filename.lastIndexOf('.'));
+
+                    // Extract title from first line or use filename
+                    String title = noteId;
+                    if (!content.isEmpty()) {
+                        String[] lines = content.split("\n", 2);
+                        if (lines[0].startsWith("#")) {
+                            title = lines[0].replaceAll("^#+\s*", "").trim();
+                        }
+                    }
+
+                    Note note = new Note();
+                    note.ownerId = user.id;
+                    note.title = title.isEmpty() ? "Untitled" : title.substring(0, Math.min(255, title.length()));
+                    note.content = content;
+
+                    // Map folder to tags (simplified)
+                    String folderTag = folderMap.getOrDefault(noteId, "joplin-import");
+                    note.tags = folderTag.replaceAll("[^a-zA-Z0-9\\s-]", "").trim();
+                    if (note.tags.isEmpty()) {
+                        note.tags = "joplin-import";
+                    }
+
+                    note.persist();
+                    imported++;
+                } catch (Exception e) {
+                    errors++;
+                    messages.add("Error importing note: " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Failed to process JEX file: " + e.getMessage()).build();
+        }
+
+        return Response.ok(new ImportResult(imported, errors, messages)).build();
+    }
+
+    /**
+     * Import a single Markdown file as a new note.
+     */
+    @POST
+    @Path("/import/markdown")
+    @Consumes(MediaType.APPLICATION_OCTET_STREAM)
+    @Transactional
+    public Response importMarkdown(InputStream mdStream) {
+        User user = getAuthenticatedUser();
+        if (user == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        }
+
+        try {
+            String content = new String(mdStream.readAllBytes(), StandardCharsets.UTF_8);
+
+            // Extract title from first line
+            String title = "Untitled";
+            if (!content.isEmpty()) {
+                String[] lines = content.split("\n", 2);
+                if (lines[0].startsWith("#")) {
+                    title = lines[0].replaceAll("^#+\s*", "").trim();
+                } else if (!lines[0].isEmpty()) {
+                    title = lines[0];
+                }
+            }
+
+            Note note = new Note();
+            note.ownerId = user.id;
+            note.title = title.substring(0, Math.min(255, title.length()));
+            note.content = content;
+            note.tags = "markdown-import";
+            note.persist();
+
+            return Response.ok(note).build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Failed to process markdown file: " + e.getMessage()).build();
+        }
+    }
+
+    private String readZipEntryAsString(ZipInputStream zis, byte[] buffer) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        int len;
+        while ((len = zis.read(buffer)) > 0) {
+            sb.append(new String(buffer, 0, len, StandardCharsets.UTF_8));
+        }
+        return sb.toString();
     }
 }

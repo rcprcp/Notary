@@ -70,6 +70,12 @@
             <artifactId>quarkus-elytron-security-common</artifactId>
         </dependency>
 
+        <!-- JSON processing for JEX import -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>io.quarkus</groupId>

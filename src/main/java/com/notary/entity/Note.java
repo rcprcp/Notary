@@ -21,6 +21,10 @@ public class Note extends BaseEntity {
     @Column(name = "content", nullable = false, length = 10485760)
     public String content;
 
+    /** Space-delimited tags; up to 10000 characters. */
+    @Column(name = "tags", length = 10000)
+    public String tags = "";
+
     /** Notes of one owner (by user UUID), newest first. */
     public static List<Note> findByOwner(UUID ownerId) {
         return list("ownerId", Sort.descending("createdAt"), ownerId);

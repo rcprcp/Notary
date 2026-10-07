@@ -48,4 +48,22 @@ export const notesApi = {
   create: (note) => request('/api/notes', { method: 'POST', body: JSON.stringify(note) }),
   update: (id, note) => request(`/api/notes/${id}`, { method: 'PUT', body: JSON.stringify(note) }),
   remove: (id) => request(`/api/notes/${id}`, { method: 'DELETE' }),
+  importJoplin: (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return request('/api/notes/import/joplin', {
+      method: 'POST',
+      headers: {}, // Let browser set Content-Type for multipart
+      body: file,
+      credentials: 'include',
+    })
+  },
+  importMarkdown: (file) => {
+    return request('/api/notes/import/markdown', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file.stream(),
+      credentials: 'include',
+    })
+  },
 }
