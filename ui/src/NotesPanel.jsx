@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton } from '@mantine/core'
-import { IconChevronDown, IconChevronUp, IconSearch, IconSelector } from '@tabler/icons-react'
+import { Alert, Button, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton, Badge, FileInput, Progress, Loader } from '@mantine/core'
+import { IconChevronDown, IconChevronUp, IconSearch, IconSelector, IconUpload } from '@tabler/icons-react'
 import { RichTextEditor } from '@mantine/tiptap'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -12,7 +12,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from '@tiptap/extension-markdown'
 import { notesApi } from './api'
 
-const EMPTY_FORM = { title: '', content: '' }
+const EMPTY_FORM = { title: '', content: '', tags: '' }
 const DEFAULT_SEARCH = { q: '', searchTitles: true, searchContent: true }
 
 function MarkdownEditor({ value, onChange }) {
@@ -124,6 +124,11 @@ export default function NotesPanel() {
   const [activeSearch, setActiveSearch] = useState(null)
   const [helpOpened, setHelpOpened] = useState(false)
 
+  // Import states
+  const [importModalOpened, setImportModalOpened] = useState(false)
+  const [importLoading, setImportLoading] = useState(false)
+  const [importResult, setImportResult] = useState(null)
+
   const load = useCallback(async (searchParams) => {
     try {
       setNotes(await notesApi.list(searchParams))
@@ -195,7 +200,7 @@ export default function NotesPanel() {
   // Selecting a note shows both its title and content for editing.
   const openEdit = (note) => {
     setEditingNote(note)
-    setForm({ title: note.title || '', content: note.content || '' })
+    setForm({ title: note.title || '', content: note.content || '', tags: note.tags || '' })
     setFormError(null)
     setOpened(true)
   }
@@ -213,11 +218,12 @@ export default function NotesPanel() {
         const body = {}
         if (form.title.trim() !== (editingNote.title || '')) body.title = form.title.trim()
         if (form.content !== editingNote.content) body.content = form.content
+        if (form.tags !== (editingNote.tags || '')) body.tags = form.tags.trim()
         if (Object.keys(body).length > 0) {
           await notesApi.update(editingNote.id, body)
         }
       } else {
-        await notesApi.create({ title: form.title.trim(), content: form.content })
+        await notesApi.create({ title: form.title.trim(), content: form.content, tags: form.tags.trim() })
       }
       setOpened(false)
       setError(null)
@@ -248,12 +254,57 @@ export default function NotesPanel() {
     }
   }
 
+  const handleImportJoplin = async (file) => {
+    if (!file) return
+    setImportLoading(true)
+    setImportResult(null)
+    try {
+      const result = await notesApi.importJoplin(file)
+      setImportResult(result)
+      await reload()
+    } catch (e) {
+      setImportResult({
+        imported: 0,
+        errors: 1,
+        messages: [e.message],
+      })
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  const handleImportMarkdown = async (file) => {
+    if (!file) return
+    setImportLoading(true)
+    setImportResult(null)
+    try {
+      await notesApi.importMarkdown(file)
+      setImportResult({
+        imported: 1,
+        errors: 0,
+        messages: ['Note imported successfully'],
+      })
+      await reload()
+    } catch (e) {
+      setImportResult({
+        imported: 0,
+        errors: 1,
+        messages: [e.message],
+      })
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
   return (
     <Stack gap="md">
       <Group justify="space-between">
         <Title order={2}>Notes</Title>
         <Group>
           <Button variant="default" onClick={reload}>Refresh</Button>
+          <Button variant="light" onClick={() => setImportModalOpened(true)} leftSection={<IconUpload size={16} />}>
+            Import
+          </Button>
           <Button onClick={openCreate}>New note</Button>
         </Group>
       </Group>
@@ -323,7 +374,18 @@ export default function NotesPanel() {
               <Table.Tr key={n.id} style={{ cursor: 'pointer' }} onClick={() => openEdit(n)}>
                 <Table.Td>{new Date(n.createdAt).toLocaleString()}</Table.Td>
                 <Table.Td>{new Date(n.updatedAt).toLocaleString()}</Table.Td>
-                <Table.Td>{n.title || <Text c="dimmed" fs="italic">Untitled</Text>}</Table.Td>
+                <Table.Td>
+                  <Stack gap="xs">
+                    <Text>{n.title || <Text c="dimmed" fs="italic">Untitled</Text>}</Text>
+                    {n.tags && (
+                      <Group gap="xs">
+                        {n.tags.split(' ').filter(t => t.length > 0).map((tag, idx) => (
+                          <Badge key={idx} size="sm" variant="light">{tag}</Badge>
+                        ))}
+                      </Group>
+                    )}
+                  </Stack>
+                </Table.Td>
                 <Table.Td>
                   <Group gap="xs" wrap="nowrap">
                     <Button size="xs" variant="light" onClick={(e) => { e.stopPropagation(); openEdit(n) }}>Edit</Button>
@@ -352,6 +414,14 @@ export default function NotesPanel() {
             onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
           />
 
+          <TextInput
+            label="Tags (space-delimited)"
+            placeholder="joplin important work"
+            maxLength={10000}
+            value={form.tags}
+            onChange={(e) => setForm({ ...form, tags: e.currentTarget.value })}
+          />
+
           <div>
             <Text fw={500} size="sm" mb={6}>Content</Text>
             <MarkdownEditor
@@ -364,6 +434,74 @@ export default function NotesPanel() {
             <Button variant="default" onClick={() => setOpened(false)}>Cancel</Button>
             <Button onClick={save} loading={saving}>{editingNote ? 'Update' : 'Create'}</Button>
           </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={importModalOpened}
+        onClose={() => setImportModalOpened(false)}
+        title="Import notes"
+        size="md"
+      >
+        <Stack>
+          {importResult && (
+            <Alert
+              color={importResult.errors === 0 ? 'green' : 'yellow'}
+              withCloseButton
+              onClose={() => setImportResult(null)}
+            >
+              <Stack gap="xs">
+                <Text>
+                  Imported {importResult.imported} note{importResult.imported === 1 ? '' : 's'}
+                  {importResult.errors > 0 && ` with ${importResult.errors} error${importResult.errors === 1 ? '' : 's'}`}
+                </Text>
+                {importResult.messages.length > 0 && (
+                  <List size="sm">
+                    {importResult.messages.map((msg, idx) => (
+                      <List.Item key={idx}>{msg}</List.Item>
+                    ))}
+                  </List>
+                )}
+              </Stack>
+            </Alert>
+          )}
+
+          {importLoading && (
+            <Stack align="center" gap="md">
+              <Loader />
+              <Text c="dimmed">Importing...</Text>
+            </Stack>
+          )}
+
+          {!importLoading && !importResult && (
+            <Stack gap="md">
+              <Stack gap="sm">
+                <Text fw={500}>Import from Joplin (.jex)</Text>
+                <Text size="sm" c="dimmed">
+                  Export from Joplin, then upload the .jex file. Folder hierarchy will be converted to tags.
+                </Text>
+                <FileInput
+                  placeholder="Choose .jex file"
+                  accept=".jex"
+                  onChange={handleImportJoplin}
+                  disabled={importLoading}
+                />
+              </Stack>
+
+              <Stack gap="sm">
+                <Text fw={500}>Import Markdown file (.md)</Text>
+                <Text size="sm" c="dimmed">
+                  Upload a single markdown file. The first line will be used as the title.
+                </Text>
+                <FileInput
+                  placeholder="Choose .md file"
+                  accept=".md"
+                  onChange={handleImportMarkdown}
+                  disabled={importLoading}
+                />
+              </Stack>
+            </Stack>
+          )}
         </Stack>
       </Modal>
 
