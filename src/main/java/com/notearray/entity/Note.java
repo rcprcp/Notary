@@ -25,6 +25,9 @@ public class Note extends BaseEntity {
     @Column(name = "tags", length = 10000)
     public String tags = "";
 
+    @Column(name = "pinned", nullable = false)
+    public boolean pinned = false;
+
     /** Notes of one owner (by user UUID), newest first. */
     public static List<Note> findByOwner(UUID ownerId) {
         return list("ownerId", Sort.descending("createdAt"), ownerId);

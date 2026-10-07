@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Button, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton, Badge, FileInput, Loader, Card, SimpleGrid } from '@mantine/core'
-import { IconCheck, IconChevronDown, IconChevronUp, IconSearch, IconSelector, IconUpload, IconMenu2, IconX } from '@tabler/icons-react'
+import { ActionIcon, Alert, Box, Button, Collapse, Checkbox, Group, List, Modal, Stack, Table, Text, TextInput, Title, UnstyledButton, Badge, FileInput, Loader, Card, SimpleGrid } from '@mantine/core'
+import { IconCheck, IconChevronDown, IconChevronUp, IconPin, IconSearch, IconSelector, IconUpload, IconMenu2, IconX } from '@tabler/icons-react'
 import { useMediaQuery } from '@mantine/hooks'
 import { RichTextEditor } from '@mantine/tiptap'
 import { useEditor } from '@tiptap/react'
@@ -12,9 +12,30 @@ import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from '@tiptap/extension-markdown'
 import { notesApi } from './api'
+import FilterPanel, { DEFAULT_FILTERS, FilterBadge, STALE_DAYS, buildApiFilters, describeFilters } from './FilterPanel'
 
 const EMPTY_FORM = { title: '', content: '', tags: '' }
 const DEFAULT_SEARCH = { q: '', searchTitles: true, searchContent: true }
+
+const FILTERS_KEY = 'notearray.filters'
+const SAVED_SEARCHES_KEY = 'notearray.savedSearches'
+
+function readStorage(key, fallback) {
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : fallback
+  } catch (e) {
+    return fallback
+  }
+}
+
+function writeStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch (e) {
+    // storage unavailable (private mode / quota); preferences just won't persist
+  }
+}
 
 // Milliseconds of typing inactivity before an existing note is auto-saved.
 const AUTOSAVE_DELAY_MS = 2000
@@ -136,8 +157,23 @@ function AutoSaveStatus({ status, lastSaved }) {
   return <Text size="xs" c="dimmed">Changes are saved automatically.</Text>
 }
 
+function PinButton({ note, onToggle }) {
+  const Icon = IconPin
+  return (
+    <ActionIcon
+      variant={note.pinned ? 'filled' : 'subtle'}
+      size="lg"
+      onClick={(e) => { e.stopPropagation(); onToggle(note) }}
+      aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
+      aria-pressed={!!note.pinned}
+    >
+      <Icon size={16} />
+    </ActionIcon>
+  )
+}
+
 // Mobile card view for a single note
-function NoteCard({ note, onEdit, onDelete }) {
+function NoteCard({ note, onEdit, onDelete, onTogglePin }) {
   return (
     <Card shadow="sm" padding="md" radius="md" withBorder onClick={() => onEdit(note)} style={{ cursor: 'pointer' }}>
       <Stack gap="xs">
@@ -158,6 +194,7 @@ function NoteCard({ note, onEdit, onDelete }) {
           )}
         </div>
         <Group gap="xs" justify="flex-end">
+          <PinButton note={note} onToggle={onTogglePin} />
           <Button size="xs" variant="light" onClick={(e) => { e.stopPropagation(); onEdit(note) }}>Edit</Button>
           <Button size="xs" variant="light" color="red" onClick={(e) => { e.stopPropagation(); onDelete(note) }}>Delete</Button>
         </Group>
@@ -198,14 +235,27 @@ export default function NotesPanel() {
   const [helpOpened, setHelpOpened] = useState(false)
   const [searchExpanded, setSearchExpanded] = useState(false)
 
+  // Advanced filters (persisted), saved searches (persisted) and the unfiltered note list
+  // used for tag options and smart collection counts.
+  const [filters, setFilters] = useState(() => ({ ...DEFAULT_FILTERS, ...readStorage(FILTERS_KEY, {}) }))
+  const [savedSearches, setSavedSearches] = useState(() => readStorage(SAVED_SEARCHES_KEY, []))
+  const [allNotes, setAllNotes] = useState([])
+  const [filtersOpen, setFiltersOpen] = useState(false)
+
   // Import states
   const [importModalOpened, setImportModalOpened] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
   const [importResult, setImportResult] = useState(null)
 
-  const load = useCallback(async (searchParams) => {
+  const load = useCallback(async (searchParams, filterState) => {
     try {
-      setNotes(await notesApi.list(searchParams))
+      const apiFilters = buildApiFilters(filterState)
+      const [filtered, everything] = await Promise.all([
+        notesApi.list(searchParams, apiFilters),
+        notesApi.list(),
+      ])
+      setNotes(filtered)
+      setAllNotes(everything)
       setError(null)
     } catch (e) {
       if (e.status === 401) {
@@ -217,17 +267,78 @@ export default function NotesPanel() {
   }, [])
 
   useEffect(() => {
-    load(activeSearch)
+    load(activeSearch, filters)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load])
+  }, [load, filters])
 
-  const reload = () => load(activeSearch)
+  useEffect(() => writeStorage(FILTERS_KEY, filters), [filters])
+  useEffect(() => writeStorage(SAVED_SEARCHES_KEY, savedSearches), [savedSearches])
+
+  const reload = () => load(activeSearch, filters)
+
+  const updateFilters = (patch) => {
+    if (patch.collection === 'stale') setSort({ field: 'updatedAt', dir: 'asc' })
+    setFilters((f) => ({ ...f, ...patch }))
+  }
+
+  const activeFilterItems = useMemo(() => describeFilters(filters), [filters])
+  const activeFilterCount = activeFilterItems.length + (activeSearch ? 1 : 0)
+
+  const allTags = useMemo(() => {
+    const set = new Set(filters.tags)
+    allNotes.forEach((n) => (n.tags || '').split(' ').filter(Boolean).forEach((t) => set.add(t)))
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [allNotes, filters.tags])
+
+  const collectionCounts = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const staleBefore = new Date(today)
+    staleBefore.setDate(staleBefore.getDate() - STALE_DAYS)
+    return {
+      untagged: allNotes.filter((n) => !(n.tags || '').trim()).length,
+      pinned: allNotes.filter((n) => n.pinned).length,
+      today: allNotes.filter((n) => new Date(n.updatedAt) >= today).length,
+      stale: allNotes.filter((n) => new Date(n.updatedAt) <= staleBefore).length,
+    }
+  }, [allNotes])
+
+  const resultCounts = useMemo(() => ({
+    pinned: notes.filter((n) => n.pinned).length,
+    untagged: notes.filter((n) => !(n.tags || '').trim()).length,
+  }), [notes])
+
+  const saveSearch = (name) => {
+    setSavedSearches((list) => [
+      ...list,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name, search: activeSearch || search, filters },
+    ])
+  }
+  const applySavedSearch = (saved) => {
+    const nextSearch = { ...DEFAULT_SEARCH, ...saved.search }
+    setSearch(nextSearch)
+    setActiveSearch(nextSearch.q && nextSearch.q.trim() ? nextSearch : null)
+    const nextFilters = { ...DEFAULT_FILTERS, ...saved.filters }
+    setFilters(nextFilters)
+    setFiltersOpen(false)
+    load(nextSearch.q && nextSearch.q.trim() ? nextSearch : null, nextFilters)
+  }
+  const deleteSavedSearch = (id) => setSavedSearches((list) => list.filter((x) => x.id !== id))
+
+  const togglePin = async (note) => {
+    try {
+      await notesApi.update(note.id, { pinned: !note.pinned })
+      await reload()
+    } catch (e) {
+      setError(`Failed to update note: ${e.message}`)
+    }
+  }
 
   const runSearch = async () => {
     if (!search.q.trim()) {
       // Empty search text: clear the search and show all notes.
       setActiveSearch(null)
-      await load(null)
+      await load(null, filters)
       return
     }
     if (!search.searchTitles && !search.searchContent) {
@@ -235,13 +346,20 @@ export default function NotesPanel() {
       return
     }
     setActiveSearch(search)
-    await load(search)
+    await load(search, filters)
+  }
+
+  const clearAll = async () => {
+    setSearch(DEFAULT_SEARCH)
+    setActiveSearch(null)
+    setFilters(DEFAULT_FILTERS)
+    await load(null, DEFAULT_FILTERS)
   }
 
   const clearSearch = async () => {
     setSearch(DEFAULT_SEARCH)
     setActiveSearch(null)
-    await load(null)
+    await load(null, filters)
   }
 
   const toggleSort = (field) =>
@@ -481,6 +599,20 @@ export default function NotesPanel() {
     }
   }
 
+  const filterPanel = (
+    <FilterPanel
+      filters={filters}
+      onChange={updateFilters}
+      allTags={allTags}
+      collectionCounts={collectionCounts}
+      saved={savedSearches}
+      canSave={activeFilterCount > 0}
+      onSaveSearch={saveSearch}
+      onApplySaved={applySavedSearch}
+      onDeleteSaved={deleteSavedSearch}
+    />
+  )
+
   return (
     <Stack gap="md" p={{ base: 'sm', sm: 'md' }}>
       {/* Header */}
@@ -495,6 +627,9 @@ export default function NotesPanel() {
         </Group>
       </Group>
 
+      <Group align="flex-start" wrap={isMobile ? 'wrap' : 'nowrap'} gap="md">
+      {!isMobile && <Box w={300} style={{ flexShrink: 0 }}>{filterPanel}</Box>}
+      <Stack gap="md" style={{ flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined }}>
       {/* Search Section */}
       <Stack gap="xs">
         <Group align="flex-end" wrap="nowrap" gap={{ base: 'xs', sm: 'md' }}>
@@ -557,6 +692,31 @@ export default function NotesPanel() {
             />
           </Group>
         )}
+        {isMobile && (
+          <>
+            <Button
+              variant="light"
+              size="xs"
+              onClick={() => setFiltersOpen((o) => !o)}
+              aria-expanded={filtersOpen}
+              rightSection={activeFilterCount > 0 ? <Badge size="xs" circle>{activeFilterCount}</Badge> : null}
+            >
+              {filtersOpen ? 'Hide filters' : 'Filters'}
+            </Button>
+            <Collapse in={filtersOpen}>{filterPanel}</Collapse>
+          </>
+        )}
+
+        {activeFilterCount > 0 && (
+          <Group gap="xs" aria-label="Active filters">
+            <Badge variant="outline" size="lg">{activeFilterCount} active filter{activeFilterCount === 1 ? '' : 's'}</Badge>
+            {activeSearch && <FilterBadge label={`Search: ${activeSearch.q.trim()}`} onClear={clearSearch} />}
+            {activeFilterItems.map((item) => (
+              <FilterBadge key={item.key} label={item.label} onClear={() => updateFilters(item.clear)} />
+            ))}
+            <Button variant="subtle" size="xs" onClick={clearAll}>Clear all filters</Button>
+          </Group>
+        )}
       </Stack>
 
       {/* Alerts */}
@@ -566,25 +726,28 @@ export default function NotesPanel() {
         </Alert>
       )}
 
-      {activeSearch && (
+      {activeFilterCount > 0 && (
         <Stack gap="xs">
-          <Text fw={600} size={{ base: 'md', sm: 'lg' }}>
-            Search results for "{activeSearch.q.trim()}"
-          </Text>
-          <Text size="sm" c="dimmed">
+          {activeSearch && (
+            <Text fw={600} size={{ base: 'md', sm: 'lg' }}>
+              Search results for "{activeSearch.q.trim()}"
+            </Text>
+          )}
+          <Text size="sm" c="dimmed" role="status">
             Found {notes.length} result{notes.length === 1 ? '' : 's'}
+            {notes.length > 0 && ` (${resultCounts.pinned} pinned, ${resultCounts.untagged} untagged)`}
           </Text>
         </Stack>
       )}
 
       {/* Notes Display */}
       {notes.length === 0 ? (
-        <Text c="dimmed" ta="center" py="xl">{activeSearch ? 'No notes match your search.' : 'You have no notes yet.'}</Text>
+        <Text c="dimmed" ta="center" py="xl">{activeFilterCount > 0 ? 'No notes match your search or filters.' : 'You have no notes yet.'}</Text>
       ) : isMobile ? (
         // Mobile: Card view
         <SimpleGrid cols={1} spacing="md">
           {sortedNotes.map((n) => (
-            <NoteCard key={n.id} note={n} onEdit={openEdit} onDelete={remove} />
+            <NoteCard key={n.id} note={n} onEdit={openEdit} onDelete={remove} onTogglePin={togglePin} />
           ))}
         </SimpleGrid>
       ) : (
@@ -617,6 +780,7 @@ export default function NotesPanel() {
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs" wrap="nowrap">
+                    <PinButton note={n} onToggle={togglePin} />
                     <Button size="xs" variant="light" onClick={(e) => { e.stopPropagation(); openEdit(n) }}>Edit</Button>
                     <Button size="xs" variant="light" color="red" onClick={(e) => { e.stopPropagation(); remove(n) }}>Delete</Button>
                   </Group>
@@ -626,6 +790,9 @@ export default function NotesPanel() {
           </Table.Tbody>
         </Table>
       )}
+
+      </Stack>
+      </Group>
 
       {/* Edit/Create Modal */}
       <Modal
