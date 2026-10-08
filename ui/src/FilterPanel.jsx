@@ -134,8 +134,7 @@ export function SmartCollections({ active, counts, onSelect }) {
           key={c.value}
           onClick={() => onSelect(active === c.value ? null : c.value)}
           aria-pressed={active === c.value}
-          style={{ minHeight: 44, padding: '0 8px', borderRadius: 4 }}
-          bg={active === c.value ? 'var(--mantine-primary-color-light)' : undefined}
+          style={{ minHeight: 44, padding: '0 8px', borderRadius: 4, background: active === c.value ? 'var(--mantine-primary-color-light)' : undefined }}
         >
           <Group justify="space-between" wrap="nowrap" mih={44}>
             <Group gap={6} wrap="nowrap">

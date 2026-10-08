@@ -21,12 +21,10 @@ import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -276,74 +274,84 @@ public class NoteResource {
         int imported = 0;
         int errors = 0;
 
+        byte[] data;
         try {
-            Map<String, String> folderMap = new HashMap<>(); // folderID -> folderTitle
-            Map<String, String> noteMap = new HashMap<>();   // noteID -> folderPath (tag)
+            data = jexStream.readAllBytes();
+        } catch (Exception e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("Failed to read JEX file: " + e.getMessage()).build();
+        }
 
-            ZipInputStream zis = new ZipInputStream(jexStream);
-            ZipEntry entry;
-            byte[] buffer = new byte[1024];
+        Map<String, String> folderMap = new HashMap<>(); // folderID -> folderTitle
+        Map<String, String> noteMap = new HashMap<>();   // noteID -> parent folderID
 
-            // First pass: collect folder hierarchy
-            while ((entry = zis.getNextEntry()) != null) {
-                if (entry.getName().endsWith(".md")) continue;
-                if (!entry.getName().endsWith(".json")) continue;
+        try {
+            // First pass: collect folder hierarchy and note -> folder mapping
+            try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(data))) {
+                ZipEntry entry;
+                byte[] buffer = new byte[8192];
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (entry.getName().endsWith(".md")) continue;
+                    if (!entry.getName().endsWith(".json")) continue;
 
-                String content = readZipEntryAsString(zis, buffer);
-                try {
-                    JsonNode node = objectMapper.readTree(content);
-                    String type = node.has("type_") ? node.get("type_").asText() : "";
-
-                    if ("2".equals(type)) { // Folder type
+                    try {
+                        JsonNode node = objectMapper.readTree(readZipEntryAsString(zis, buffer));
+                        String type = node.has("type_") ? node.get("type_").asText() : "";
                         String id = node.has("id") ? node.get("id").asText() : "";
-                        String title = node.has("title") ? node.get("title").asText() : "Untitled";
-                        if (!id.isEmpty()) {
+                        if (!id.isEmpty() && "2".equals(type)) { // Folder
+                            String title = node.has("title") ? node.get("title").asText() : "Untitled";
                             folderMap.put(id, title);
+                        } else if (!id.isEmpty() && "1".equals(type)) { // Note
+                            String parentId = node.has("parent_id") ? node.get("parent_id").asText() : "";
+                            if (!parentId.isEmpty()) {
+                                noteMap.put(id, parentId);
+                            }
                         }
+                    } catch (Exception e) {
+                        messages.add("Warning: Could not parse metadata file");
                     }
-                } catch (Exception e) {
-                    messages.add("Warning: Could not parse metadata file");
                 }
             }
 
-            // Second pass: import notes
-            jexStream = Files.newInputStream(Files.createTempFile("joplin", ".jex"));
-            zis = new ZipInputStream(jexStream);
+            // Second pass: import notes (the archive is buffered so it can be read again)
+            try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(data))) {
+                ZipEntry entry;
+                byte[] buffer = new byte[8192];
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (!entry.getName().endsWith(".md")) continue;
 
-            while ((entry = zis.getNextEntry()) != null) {
-                if (!entry.getName().endsWith(".md")) continue;
+                    try {
+                        String content = readZipEntryAsString(zis, buffer);
+                        String filename = entry.getName();
+                        String noteId = filename.substring(0, filename.lastIndexOf('.'));
 
-                try {
-                    String content = readZipEntryAsString(zis, buffer);
-                    String filename = entry.getName();
-                    String noteId = filename.substring(0, filename.lastIndexOf('.'));
-
-                    // Extract title from first line or use filename
-                    String title = noteId;
-                    if (!content.isEmpty()) {
-                        String[] lines = content.split("\n", 2);
-                        if (lines[0].startsWith("#")) {
-                            title = lines[0].replaceAll("^#+\s*", "").trim();
+                        // Extract title from first line or use filename
+                        String title = noteId;
+                        if (!content.isEmpty()) {
+                            String[] lines = content.split("\n", 2);
+                            if (lines[0].startsWith("#")) {
+                                title = lines[0].replaceAll("^#+\\s*", "").trim();
+                            }
                         }
+
+                        Note note = new Note();
+                        note.ownerId = user.id;
+                        note.title = title.isEmpty() ? "Untitled" : title.substring(0, Math.min(255, title.length()));
+                        note.content = content;
+
+                        // Map the note's parent folder to a tag
+                        String folderTag = folderMap.getOrDefault(noteMap.get(noteId), "joplin-import");
+                        note.tags = folderTag.replaceAll("[^a-zA-Z0-9\\s-]", "").trim();
+                        if (note.tags.isEmpty()) {
+                            note.tags = "joplin-import";
+                        }
+
+                        note.persist();
+                        imported++;
+                    } catch (Exception e) {
+                        errors++;
+                        messages.add("Error importing note: " + e.getMessage());
                     }
-
-                    Note note = new Note();
-                    note.ownerId = user.id;
-                    note.title = title.isEmpty() ? "Untitled" : title.substring(0, Math.min(255, title.length()));
-                    note.content = content;
-
-                    // Map folder to tags (simplified)
-                    String folderTag = folderMap.getOrDefault(noteId, "joplin-import");
-                    note.tags = folderTag.replaceAll("[^a-zA-Z0-9\\s-]", "").trim();
-                    if (note.tags.isEmpty()) {
-                        note.tags = "joplin-import";
-                    }
-
-                    note.persist();
-                    imported++;
-                } catch (Exception e) {
-                    errors++;
-                    messages.add("Error importing note: " + e.getMessage());
                 }
             }
         } catch (Exception e) {

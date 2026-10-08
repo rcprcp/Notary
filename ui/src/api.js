@@ -1,10 +1,16 @@
 // Small fetch wrapper for the Quarkus REST API.
 // Credentials (cookies) are included automatically.
 async function request(path, options = {}) {
+  const headers = { ...(options.headers || {}) }
+  // Default to JSON for string bodies unless the caller set a Content-Type.
+  // Binary/FormData bodies keep their explicit header (or none, to let the browser set it).
+  if (!headers['Content-Type'] && typeof options.body === 'string') {
+    headers['Content-Type'] = 'application/json'
+  }
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     ...options,
+    headers,
+    credentials: 'include',
   })
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`
@@ -30,6 +36,7 @@ export const usersApi = {
   create: (user) => request('/api/users', { method: 'POST', body: JSON.stringify(user) }),
   update: (id, user) => request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(user) }),
   remove: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),
+  list: () => request('/api/users'),
 }
 
 export const notesApi = {
@@ -59,11 +66,9 @@ export const notesApi = {
   update: (id, note) => request(`/api/notes/${id}`, { method: 'PUT', body: JSON.stringify(note) }),
   remove: (id) => request(`/api/notes/${id}`, { method: 'DELETE' }),
   importJoplin: (file) => {
-    const formData = new FormData()
-    formData.append('file', file)
     return request('/api/notes/import/joplin', {
       method: 'POST',
-      headers: {}, // Let browser set Content-Type for multipart
+      headers: { 'Content-Type': 'application/octet-stream' },
       body: file,
       credentials: 'include',
     })
@@ -72,7 +77,7 @@ export const notesApi = {
     return request('/api/notes/import/markdown', {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
-      body: file.stream(),
+      body: file,
       credentials: 'include',
     })
   },
