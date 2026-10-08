@@ -6,7 +6,7 @@ VALUES (
   '550e8400-e29b-41d4-a716-446655440000'::uuid,
   'mickey',
   'mickey@mickey.com',
-  '$2a$10$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jKMUe',  -- hash of 'mickey'
+  '$2a$10$FT2HlEtEenTiyl3sQpbGQOh2oL8uONt7WEySy93OTBjdkFfI2NoEO',  -- hash of 'mickey'
   'blue',
   false,
   NOW(),

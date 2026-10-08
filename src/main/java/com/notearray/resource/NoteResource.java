@@ -2,12 +2,11 @@ package com.notearray.resource;
 
 import com.notearray.entity.Note;
 import com.notearray.entity.User;
+import com.notearray.service.SessionService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.inject.Inject;
 import jakarta.persistence.Query;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -19,6 +18,7 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.io.BufferedReader;
@@ -27,8 +27,6 @@ import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -45,7 +43,10 @@ import java.util.zip.ZipInputStream;
 public class NoteResource {
 
     @Context
-    HttpServletRequest request;
+    HttpHeaders headers;
+
+    @Inject
+    SessionService sessions;
 
     @Inject
     ObjectMapper objectMapper;
@@ -55,13 +56,10 @@ public class NoteResource {
 
     public record ImportResult(int imported, int errors, List<String> messages) {}
 
-    /** Get the authenticated user from the session. Returns null if not logged in. */
+    /** Get the authenticated user from the session cookie. Returns null if not logged in. */
     private User getAuthenticatedUser() {
-        HttpSession session = request.getSession(false);
-        if (session == null) return null;
-        UUID userId = (UUID) session.getAttribute("userId");
-        if (userId == null) return null;
-        return User.findById(userId);
+        UUID userId = sessions.resolve(headers.getCookies().get(SessionService.COOKIE_NAME));
+        return userId == null ? null : User.findById(userId);
     }
 
     /**
@@ -204,6 +202,7 @@ public class NoteResource {
         note.title = req.title().trim();
         note.content = req.content();
         note.tags = (req.tags() != null) ? req.tags().trim() : "";
+        note.pinned = Boolean.TRUE.equals(req.pinned());
         note.persist();
         return Response.created(URI.create("/api/notes/" + note.id)).entity(note).build();
     }
@@ -255,9 +254,8 @@ public class NoteResource {
         if (note == null || !canAccessNote(user, note)) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        return note.delete() > 0
-                ? Response.noContent().build()
-                : Response.status(Response.Status.NOT_FOUND).build();
+        note.delete();
+        return Response.noContent().build();
     }
 
     /**

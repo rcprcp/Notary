@@ -2,10 +2,9 @@ package com.notearray.resource;
 
 import com.notearray.entity.Note;
 import com.notearray.entity.User;
+import com.notearray.service.SessionService;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.inject.Inject;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -16,6 +15,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
@@ -35,7 +35,10 @@ public class UserResource {
             "cyan", "teal", "green", "lime", "yellow", "orange");
 
     @Context
-    HttpServletRequest request;
+    HttpHeaders headers;
+
+    @Inject
+    SessionService sessions;
 
     /** Request body for create/update. For update, every field is optional. */
     public record UserRequest(String name, String email, String password, String themeColor) {}
@@ -43,13 +46,10 @@ public class UserResource {
     /** Request body for login. */
     public record LoginRequest(String email, String password) {}
 
-    /** Get the authenticated user from the session. Returns null if not logged in. */
+    /** Get the authenticated user from the session cookie. Returns null if not logged in. */
     private User getAuthenticatedUser() {
-        HttpSession session = request.getSession(false);
-        if (session == null) return null;
-        UUID userId = (UUID) session.getAttribute("userId");
-        if (userId == null) return null;
-        return User.findById(userId);
+        UUID userId = sessions.resolve(headers.getCookies().get(SessionService.COOKIE_NAME));
+        return userId == null ? null : User.findById(userId);
     }
 
     /**
@@ -82,20 +82,19 @@ public class UserResource {
                     .entity("invalid email or password").build();
         }
         user.lastLogin = Instant.now();
-        // Create session and store user ID
-        HttpSession session = request.getSession(true);
-        session.setAttribute("userId", user.id);
-        return Response.ok(user).build();
+        String token = sessions.create(user.id);
+        return Response.ok(user)
+                .header("Set-Cookie", sessions.cookieHeader(token))
+                .build();
     }
 
     @POST
     @Path("/logout")
     public Response logout() {
-        HttpSession session = request.getSession(false);
-        if (session != null) {
-            session.invalidate();
-        }
-        return Response.noContent().build();
+        sessions.invalidate(headers.getCookies().get(SessionService.COOKIE_NAME));
+        return Response.noContent()
+                .header("Set-Cookie", sessions.expiredCookieHeader())
+                .build();
     }
 
     @POST

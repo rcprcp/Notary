@@ -18,12 +18,12 @@
     "@tabler/icons-react": "^2.44.0",
     "@tiptap/extension-highlight": "^2.11.7",
     "@tiptap/extension-link": "^2.11.7",
-    "@tiptap/extension-markdown": "^2.11.7",
     "@tiptap/extension-placeholder": "^2.11.7",
     "@tiptap/extension-text-align": "^2.11.7",
     "@tiptap/extension-underline": "^2.11.7",
     "@tiptap/react": "^2.11.7",
-    "@tiptap/starter-kit": "^2.11.7"
+    "@tiptap/starter-kit": "^2.11.7",
+    "tiptap-markdown": "^0.8.10"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",
@@ -31,7 +31,7 @@
     "@vitejs/plugin-react": "^4.2.0",
     "vite": "^5.0.0",
     "postcss": "^8.4.31",
-    "postcss-preset-mantine": "^4.0.0",
+    "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.1"
   }
 }
