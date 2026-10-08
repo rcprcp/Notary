@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Box, Container, Group, Button, Stack, Title } from '@mantine/core'
+import { IconUpload } from '@tabler/icons-react'
 import { IconNote } from '@tabler/icons-react'
 import LoginPage from './LoginPage'
 import NotesPanel from './NotesPanel'
@@ -7,6 +9,7 @@ import UserMenu from './UserMenu'
 
 export default function App({ themeColor, onThemeChange, currentUser, onLogin, onLogout }) {
   const navigate = useNavigate()
+  const [actions, setActions] = useState(null)
 
   if (!currentUser) {
     return <LoginPage onLogin={onLogin} />
@@ -32,6 +35,13 @@ export default function App({ themeColor, onThemeChange, currentUser, onLogin, o
             >
               Notes
             </Button>
+            <Group gap={{ base: 'xs', sm: 'md' }} wrap="nowrap">
+              <Button onClick={() => actions?.onCreate?.()}>Create note</Button>
+              <Button variant="default" onClick={() => actions?.onRefresh?.()}>Refresh</Button>
+              <Button variant="light" leftSection={<IconUpload size={16} />} onClick={() => actions?.onImport?.()}>
+                Import
+              </Button>
+            </Group>
           </Group>
 
           <UserMenu
@@ -45,7 +55,7 @@ export default function App({ themeColor, onThemeChange, currentUser, onLogin, o
 
       <Container size="lg" my="md" style={{ flex: 1 }}>
         <Routes>
-          <Route path="/notes" element={<NotesPanel />} />
+          <Route path="/notes" element={<NotesPanel registerActions={(a) => setActions(a)} />} />
           <Route path="*" element={<Navigate to="/notes" replace />} />
         </Routes>
       </Container>

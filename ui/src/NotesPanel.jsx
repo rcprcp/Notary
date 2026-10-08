@@ -206,7 +206,7 @@ function NoteCard({ note, onEdit, onDelete, onTogglePin }) {
 const TEXT_FIELDS = ['title']
 
 // Notes of the authenticated user. No owner selection needed.
-export default function NotesPanel() {
+export default function NotesPanel({ registerActions } = {}) {
   const isMobile = useMediaQuery('(max-width: 768px)')
   const controlSize = isMobile ? 'xs' : 'sm'
   const inputSize = isMobile ? 'sm' : 'md'
@@ -275,6 +275,15 @@ export default function NotesPanel() {
   }, [load, filters])
 
   useEffect(() => writeStorage(FILTERS_KEY, filters), [filters])
+  useEffect(() => {
+    if (registerActions) {
+      registerActions({
+        onCreate: openCreate,
+        onRefresh: reload,
+        onImport: () => setImportModalOpened(true),
+      })
+    }
+  }, [registerActions, openCreate, reload, setImportModalOpened])
   useEffect(() => writeStorage(SAVED_SEARCHES_KEY, savedSearches), [savedSearches])
 
   const reload = () => load(activeSearch, filters)
@@ -637,16 +646,7 @@ export default function NotesPanel() {
   return (
     <Stack gap="md" p={{ base: 'sm', sm: 'md' }}>
       {/* Header */}
-      <Group justify="space-between" align="center">
-        <Title order={2}>Notes</Title>
-        <Group gap={{ base: 'xs', sm: 'md' }} wrap="nowrap">
-          <Button variant="default" onClick={reload} size={controlSize}>Refresh</Button>
-          <Button variant="light" onClick={() => setImportModalOpened(true)} leftSection={<IconUpload size={16} />} size={controlSize}>
-            Import
-          </Button>
-          <Button onClick={openCreate} size={controlSize}>Create note</Button>
-        </Group>
-      </Group>
+
 
       <Group align="flex-start" wrap={isMobile ? 'wrap' : 'nowrap'} gap="md">
       {!isMobile && <Box w={300} style={{ flexShrink: 0 }}>{filterPanel}</Box>}
