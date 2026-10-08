@@ -208,6 +208,9 @@ const TEXT_FIELDS = ['title']
 // Notes of the authenticated user. No owner selection needed.
 export default function NotesPanel() {
   const isMobile = useMediaQuery('(max-width: 768px)')
+  const controlSize = isMobile ? 'xs' : 'sm'
+  const inputSize = isMobile ? 'sm' : 'md'
+  const modalSize = isMobile ? 'sm' : 'lg'
   const [notes, setNotes] = useState([])
   const [sort, setSort] = useState({ field: 'createdAt', dir: 'desc' })
   const [error, setError] = useState(null)
@@ -617,13 +620,13 @@ export default function NotesPanel() {
     <Stack gap="md" p={{ base: 'sm', sm: 'md' }}>
       {/* Header */}
       <Group justify="space-between" align="center">
-        <Title order={2} size={{ base: 'h3', sm: 'h2' }}>Notes</Title>
+        <Title order={2}>Notes</Title>
         <Group gap={{ base: 'xs', sm: 'md' }} wrap="nowrap">
-          <Button variant="default" onClick={reload} size={{ base: 'xs', sm: 'sm' }}>Refresh</Button>
-          <Button variant="light" onClick={() => setImportModalOpened(true)} leftSection={<IconUpload size={16} />} size={{ base: 'xs', sm: 'sm' }}>
+          <Button variant="default" onClick={reload} size={controlSize}>Refresh</Button>
+          <Button variant="light" onClick={() => setImportModalOpened(true)} leftSection={<IconUpload size={16} />} size={controlSize}>
             Import
           </Button>
-          <Button onClick={openCreate} size={{ base: 'xs', sm: 'sm' }}>New</Button>
+          <Button onClick={openCreate} size={controlSize}>Create note</Button>
         </Group>
       </Group>
 
@@ -642,10 +645,10 @@ export default function NotesPanel() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') runSearch()
             }}
-            size={{ base: 'sm', sm: 'md' }}
+            size={inputSize}
           />
-          <Button onClick={runSearch} size={{ base: 'xs', sm: 'sm' }}>Search</Button>
-          <Button variant="default" onClick={clearSearch} disabled={!activeSearch && !search.q} size={{ base: 'xs', sm: 'sm' }}>
+          <Button onClick={runSearch} size={controlSize}>Search</Button>
+          <Button variant="default" onClick={clearSearch} disabled={!activeSearch && !search.q} size={controlSize}>
             Clear
           </Button>
         </Group>
@@ -729,7 +732,7 @@ export default function NotesPanel() {
       {activeFilterCount > 0 && (
         <Stack gap="xs">
           {activeSearch && (
-            <Text fw={600} size={{ base: 'md', sm: 'lg' }}>
+            <Text fw={600} size={isMobile ? 'md' : 'lg'}>
               Search results for "{activeSearch.q.trim()}"
             </Text>
           )}
@@ -799,7 +802,7 @@ export default function NotesPanel() {
         opened={opened}
         onClose={closeModal}
         title={editingNote ? 'Edit note' : 'New note'}
-        size={{ base: 'sm', sm: 'md', md: 'lg' }}
+        size={modalSize}
         fullScreen={isMobile}
       >
         <Stack gap="md">
@@ -810,7 +813,7 @@ export default function NotesPanel() {
             value={form.title}
             error={formError}
             onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
-            size={{ base: 'sm', sm: 'md' }}
+            size={inputSize}
           />
 
           <TextInput
@@ -819,7 +822,7 @@ export default function NotesPanel() {
             maxLength={10000}
             value={form.tags}
             onChange={(e) => setForm({ ...form, tags: e.currentTarget.value })}
-            size={{ base: 'sm', sm: 'md' }}
+            size={inputSize}
           />
 
           <div>
@@ -837,8 +840,8 @@ export default function NotesPanel() {
               <Text size="xs" c="dimmed">Auto-save starts after the note is created.</Text>
             )}
             <Group justify={isMobile ? 'flex-end' : 'space-between'} gap="xs">
-              <Button variant="default" onClick={closeModal} size={{ base: 'sm', sm: 'md' }}>{editingNote ? 'Close' : 'Cancel'}</Button>
-              <Button onClick={save} loading={saving} size={{ base: 'sm', sm: 'md' }}>{editingNote ? 'Update' : 'Create'}</Button>
+              <Button variant="default" onClick={closeModal} size={inputSize}>{editingNote ? 'Close' : 'Cancel'}</Button>
+              <Button onClick={save} loading={saving} size={inputSize}>{editingNote ? 'Update' : 'Create'}</Button>
             </Group>
           </Stack>
         </Stack>
@@ -849,7 +852,7 @@ export default function NotesPanel() {
         opened={importModalOpened}
         onClose={() => setImportModalOpened(false)}
         title="Import notes"
-        size={{ base: 'sm', sm: 'md' }}
+        size={modalSize}
       >
         <Stack>
           {importResult && (
@@ -920,7 +923,7 @@ export default function NotesPanel() {
         opened={helpOpened}
         onClose={() => setHelpOpened(false)}
         title="How to search your notes"
-        size={{ base: 'sm', sm: 'md' }}
+        size={modalSize}
       >
         <Stack>
           <Text size="sm">
