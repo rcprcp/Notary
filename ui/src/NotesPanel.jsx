@@ -109,7 +109,7 @@ function MarkdownEditor({ value, onChange }) {
         </RichTextEditor.ControlsGroup>
       </RichTextEditor.Toolbar>
 
-      <RichTextEditor.Content />
+      <RichTextEditor.Content style={{ minHeight: 300, maxHeight: 500, overflowY: 'auto' }} />
     </RichTextEditor>
   )
 }
@@ -397,10 +397,11 @@ export default function NotesPanel() {
     const base = baselineRef.current || { title: '', content: '', tags: '' }
     const body = {}
     const title = values.title.trim()
-    const tags = values.tags.trim()
+    const tags = values.tags.trim().toLowerCase()
+    const baseTags = (base.tags || '').trim().toLowerCase()
     if (title !== base.title) body.title = title
     if (values.content !== base.content) body.content = values.content
-    if (tags !== base.tags) body.tags = tags
+    if (tags !== baseTags) body.tags = tags
     return body
   }
 
@@ -422,13 +423,13 @@ export default function NotesPanel() {
     baselineRef.current = {
       title: note.title || '',
       content: note.content || '',
-      tags: note.tags || '',
+      tags: (note.tags || '').toLowerCase(),
     }
     autoSavedRef.current = false
     setAutoSaveStatus('idle')
     setLastSaved(null)
     setEditingNote(note)
-    setForm({ title: note.title || '', content: note.content || '', tags: note.tags || '' })
+    setForm({ title: note.title || '', content: note.content || '', tags: (note.tags || '').toLowerCase() })
     setFormError(null)
     setOpened(true)
   }
@@ -527,13 +528,30 @@ export default function NotesPanel() {
           await notesApi.update(editingNote.id, body)
         }
       } else {
-        await notesApi.create({ title: form.title.trim(), content: form.content, tags: form.tags.trim() })
+        const created = await notesApi.create({ title: form.title.trim(), content: form.content, tags: form.tags.trim().toLowerCase() })
+        // Transition to edit mode and keep modal open so autosave starts working.
+        clearAutoSaveTimer()
+        baselineRef.current = {
+          title: created.title || form.title.trim() || '',
+          content: created.content || form.content || '',
+          tags: created.tags || form.tags.trim().toLowerCase() || '',
+        }
+        autoSavedRef.current = false
+        setAutoSaveStatus('idle')
+        setLastSaved(null)
+        setEditingNote(created)
+        setForm({ title: created.title || '', content: created.content || '', tags: created.tags || '' })
+        setFormError(null)
+        setError(null)
+        await reload()
       }
-      autoSavedRef.current = false
-      setOpened(false)
-      setAutoSaveStatus('idle')
-      setError(null)
-      await reload()
+      if (editingNote) {
+        autoSavedRef.current = false
+        setOpened(false)
+        setAutoSaveStatus('idle')
+        setError(null)
+        await reload()
+      }
     } catch (e) {
       if (e.status === 401) {
         setError('Session expired. Please login again.')
@@ -801,7 +819,8 @@ export default function NotesPanel() {
       <Modal
         opened={opened}
         onClose={closeModal}
-        title={editingNote ? 'Edit note' : 'New note'}
+        title={<div style={{ textAlign: 'center', fontWeight: 700, fontSize: '1.25rem' }}>{editingNote ? 'Edit note' : 'New note'}</div>}
+        closeButtonProps={{ 'aria-label': 'Close modal', variant: 'light' }}
         size={modalSize}
         fullScreen={isMobile}
       >
@@ -815,15 +834,27 @@ export default function NotesPanel() {
             onChange={(e) => setForm({ ...form, title: e.currentTarget.value })}
             size={inputSize}
           />
+          {editingNote && (
+            <Text size="xs" c="dimmed">Created: {new Date(editingNote.createdAt).toLocaleString()}</Text>
+          )}
 
-          <TextInput
-            label="Tags (space-delimited)"
-            placeholder="joplin important work"
-            maxLength={10000}
-            value={form.tags}
-            onChange={(e) => setForm({ ...form, tags: e.currentTarget.value })}
-            size={inputSize}
-          />
+          <div>
+            <TextInput
+              label="Tags (space-delimited)"
+              placeholder="joplin important work"
+              maxLength={10000}
+              value={form.tags}
+              onChange={(e) => setForm({ ...form, tags: e.currentTarget.value })}
+              size={inputSize}
+            />
+            {form.tags && (
+              <Group gap="xs" mt="xs">
+                {form.tags.split(/\s+/).filter(t => t.length > 0).map((tag, idx) => (
+                  <Badge key={idx} size="sm" variant="light">{tag}</Badge>
+                ))}
+              </Group>
+            )}
+          </div>
 
           <div>
             <Text fw={500} size="sm" mb={6}>Content</Text>
@@ -841,7 +872,9 @@ export default function NotesPanel() {
             )}
             <Group justify={isMobile ? 'flex-end' : 'space-between'} gap="xs">
               <Button variant="default" onClick={closeModal} size={inputSize}>{editingNote ? 'Close' : 'Cancel'}</Button>
-              <Button onClick={save} loading={saving} size={inputSize}>{editingNote ? 'Update' : 'Create'}</Button>
+              {!editingNote && (
+                <Button onClick={save} loading={saving} size={inputSize}>Create</Button>
+              )}
             </Group>
           </Stack>
         </Stack>
