@@ -109,7 +109,7 @@ function MarkdownEditor({ value, onChange }) {
         </RichTextEditor.ControlsGroup>
       </RichTextEditor.Toolbar>
 
-      <RichTextEditor.Content style={{ minHeight: 300, maxHeight: 500, overflowY: 'auto' }} />
+      <RichTextEditor.Content style={{ minHeight: 300, maxHeight: 500, overflowY: 'auto', border: '1px solid var(--mantine-color-gray-3)' }} />
     </RichTextEditor>
   )
 }
