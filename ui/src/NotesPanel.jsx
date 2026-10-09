@@ -502,7 +502,7 @@ export default function NotesPanel({ registerActions } = {}) {
 
   // Debounced auto-save: runs AUTOSAVE_DELAY_MS after the last edit to an existing note.
   useEffect(() => {
-    if (!opened || !editingNote) return undefined
+    if (!(opened || createMode || editMode)) return undefined
     const body = diffFromBaseline(form)
     if (Object.keys(body).length === 0) return undefined
     // Never auto-save a blank title (the server rejects it).
@@ -510,14 +510,39 @@ export default function NotesPanel({ registerActions } = {}) {
 
     setAutoSaveStatus('pending')
     clearAutoSaveTimer()
-    autoSaveTimerRef.current = setTimeout(() => {
+    autoSaveTimerRef.current = setTimeout(async () => {
       autoSaveTimerRef.current = null
-      performAutoSave(editingNote.id, form)
+      if (editingNote) {
+        performAutoSave(editingNote.id, form)
+        return
+      }
+      setSaving(true)
+      try {
+        const created = await notesApi.create({ title: form.title.trim(), content: form.content, tags: form.tags.trim().toLowerCase() })
+        baselineRef.current = {
+          title: created.title || form.title.trim() || '',
+          content: created.content || form.content || '',
+          tags: (created.tags || form.tags.trim().toLowerCase() || ''),
+        }
+        setEditingNote(created)
+        setForm({ title: created.title || '', content: created.content || '', tags: (created.tags || '').toLowerCase() })
+        autoSavedRef.current = true
+        setAutoSaveStatus('saved')
+        setLastSaved(new Date())
+        await reload()
+        setCreateMode(false)
+        setEditMode(true)
+      } catch (e) {
+        setAutoSaveStatus('error')
+        setFormError(e.message || 'Failed to save note')
+      } finally {
+        setSaving(false)
+      }
     }, AUTOSAVE_DELAY_MS)
 
     return clearAutoSaveTimer
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, opened, editingNote, performAutoSave])
+  }, [form, opened, createMode, editMode, editingNote, performAutoSave])
 
   // Wait for any in-flight auto-save so manual save/close don't race with it.
   const waitForInFlight = async () => {
@@ -790,7 +815,7 @@ export default function NotesPanel({ registerActions } = {}) {
           <AutoSaveStatus status={autoSaveStatus} lastSaved={lastSaved} />
           <Group justify={isMobile ? 'flex-end' : 'space-between'} gap="xs">
             <Button variant="default" onClick={closeModal} size={inputSize}>{editingNote ? 'Close' : 'Cancel'}</Button>
-            <Button onClick={save} loading={saving} size={inputSize}>Create</Button>
+
           </Group>
         </Stack>
       ) : notes.length === 0 ? (
@@ -902,9 +927,7 @@ export default function NotesPanel({ registerActions } = {}) {
             )}
             <Group justify={isMobile ? 'flex-end' : 'space-between'} gap="xs">
               <Button variant="default" onClick={closeModal} size={inputSize}>{editingNote ? 'Close' : 'Cancel'}</Button>
-              {!editingNote && (
-                <Button onClick={save} loading={saving} size={inputSize}>Create</Button>
-              )}
+              
             </Group>
           </Stack>
         </Stack>
