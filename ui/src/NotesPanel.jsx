@@ -318,6 +318,8 @@ export default function NotesPanel({ registerActions } = {}) {
         onImport: () => setImportModalOpened(true),
         onToggleSearch: () => setSearchVisible((v) => !v),
         onToggleTags: () => setTagsVisible((v) => !v),
+        onSetPinned: () => { resetAll(); setFilters({ ...DEFAULT_FILTERS, collection: 'pinned' }); setTagsVisible(false); setSearchVisible(false); },
+        onSetUntagged: () => { resetAll(); setFilters({ ...DEFAULT_FILTERS, collection: 'untagged' }); setTagsVisible(false); setSearchVisible(false); },
         onReset: resetAll,
         searchOpen: searchVisible,
         tagsOpen: tagsVisible,

@@ -41,6 +41,8 @@ export default function App({ themeColor, onThemeChange, currentUser, onLogin, o
               <Button variant={actions?.searchOpen ? "filled" : "light"} onClick={() => actions?.onToggleSearch?.()} aria-expanded={actions?.searchOpen}>
                 Text Search
               </Button>
+              <Button variant="light" onClick={() => actions?.onSetPinned?.()}>Pinned</Button>
+              <Button variant="light" onClick={() => actions?.onSetUntagged?.()}>Untagged</Button>
               <Button variant={actions?.tagsOpen ? "filled" : "light"} onClick={() => actions?.onToggleTags?.()} aria-expanded={actions?.tagsOpen}>
                 Tags
               </Button>
