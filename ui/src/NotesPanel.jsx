@@ -529,9 +529,10 @@ export default function NotesPanel({ registerActions } = {}) {
   }
 
   const closeModal = async () => {
-    if (createMode && !editingNote) {
+    if ((createMode || editMode) && !editingNote) {
       clearAutoSaveTimer()
       setCreateMode(false)
+      setEditMode(false)
       setAutoSaveStatus('idle')
       setFormError(null)
       return
@@ -551,6 +552,8 @@ export default function NotesPanel({ registerActions } = {}) {
       }
     }
     setOpened(false)
+    setEditMode(false)
+    setCreateMode(false)
     setAutoSaveStatus('idle')
     if (autoSavedRef.current) {
       autoSavedRef.current = false
