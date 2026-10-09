@@ -37,15 +37,14 @@ export default function App({ themeColor, onThemeChange, currentUser, onLogin, o
               Notes
             </Button>
             <Group gap={{ base: 'xs', sm: 'md' }} wrap="nowrap">
-              <Button onClick={() => actions?.onCreate?.()}>Create note</Button>
-              <Button variant="default" onClick={() => actions?.onRefresh?.()}>Refresh</Button>
-              <Button variant="light" onClick={() => actions?.onToggleSearch?.()} aria-expanded={actions?.searchOpen}>
+              <Button variant="light" onClick={() => actions?.onCreate?.()}>Create note</Button>
+              <Button variant={actions?.searchOpen ? "filled" : "light"} onClick={() => actions?.onToggleSearch?.()} aria-expanded={actions?.searchOpen}>
                 Text Search
               </Button>
-              <Button variant="light" onClick={() => actions?.onToggleTags?.()} aria-expanded={actions?.tagsOpen}>
+              <Button variant={actions?.tagsOpen ? "filled" : "light"} onClick={() => actions?.onToggleTags?.()} aria-expanded={actions?.tagsOpen}>
                 Tags
               </Button>
-              <Button variant="light" leftSection={<IconUpload size={16} />} onClick={() => actions?.onImport?.()}>
+              <Button variant={actions?.importOpen ? "filled" : "light"} leftSection={<IconUpload size={16} />} onClick={() => actions?.onImport?.()}>
                 Import
               </Button>
             </Group>

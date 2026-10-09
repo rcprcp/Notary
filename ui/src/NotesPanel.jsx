@@ -301,6 +301,7 @@ export default function NotesPanel({ registerActions } = {}) {
         onToggleTags: () => setTagsVisible((v) => !v),
         searchOpen: searchVisible,
         tagsOpen: tagsVisible,
+        importOpen: importModalOpened,
       })
     }
   }, [registerActions])
