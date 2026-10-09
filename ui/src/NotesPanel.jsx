@@ -758,7 +758,32 @@ export default function NotesPanel({ registerActions } = {}) {
       )}
 
       {/* Notes Display */}
-      {notes.length === 0 ? (
+      {createMode ? (
+        <Stack gap="md">
+          {formError && <Alert color="red" withCloseButton onClose={() => setFormError(null)}>{formError}</Alert>}
+          <TextInput label="Title" required maxLength={255} value={form.title} error={formError && !form.title.trim()} onChange={(e) => setForm({ ...form, title: e.currentTarget.value })} size={inputSize} />
+          <Text size="xs" c="dimmed">Created: —</Text>
+          <div>
+            <TextInput label="Tags (space-delimited)" placeholder="joplin important work" maxLength={10000} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.currentTarget.value.toLowerCase() })} size={inputSize} />
+            {form.tags && (
+              <Group gap="xs" mt="xs">
+                {form.tags.split(/\s+/).filter((t) => t.length > 0).map((t, i) => (
+                  <Badge key={i} size="sm" variant="light">{t}</Badge>
+                ))}
+              </Group>
+            )}
+          </div>
+          <div>
+            <Text fw={500} size="sm" mb={6}>Content</Text>
+            <RichTextEditor value={form.content} onChange={(c) => setForm((prev) => ({ ...prev, content: c }))} />
+          </div>
+          <AutoSaveStatus status={autoSaveStatus} lastSaved={lastSaved} />
+          <Group justify={isMobile ? 'flex-end' : 'space-between'} gap="xs">
+            <Button variant="default" onClick={closeModal} size={inputSize}>Cancel</Button>
+            <Button onClick={save} loading={saving} size={inputSize}>Create</Button>
+          </Group>
+        </Stack>
+      ) : notes.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">{activeFilterCount > 0 ? 'No notes match your search or filters.' : 'You have no notes yet.'}</Text>
       ) : isMobile ? (
         // Mobile: Card view
