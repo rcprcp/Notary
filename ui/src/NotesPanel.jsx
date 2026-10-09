@@ -247,6 +247,8 @@ export default function NotesPanel({ registerActions } = {}) {
 
   // Import states
   const [importModalOpened, setImportModalOpened] = useState(false)
+  const [searchVisible, setSearchVisible] = useState(false)
+  const [tagsVisible, setTagsVisible] = useState(false)
   const [importLoading, setImportLoading] = useState(false)
   const [importResult, setImportResult] = useState(null)
 
@@ -281,9 +283,13 @@ export default function NotesPanel({ registerActions } = {}) {
         onCreate: openCreate,
         onRefresh: reload,
         onImport: () => setImportModalOpened(true),
+        onToggleSearch: () => setSearchVisible((v) => !v),
+        onToggleTags: () => setTagsVisible((v) => !v),
+        searchOpen: searchVisible,
+        tagsOpen: tagsVisible,
       })
     }
-  }, [registerActions, openCreate, reload, setImportModalOpened])
+  }, [registerActions, openCreate, reload, searchVisible, tagsVisible])
   useEffect(() => writeStorage(SAVED_SEARCHES_KEY, savedSearches), [savedSearches])
 
   const reload = () => load(activeSearch, filters)
@@ -648,11 +654,11 @@ export default function NotesPanel({ registerActions } = {}) {
       {/* Header */}
 
 
-      <Group align="flex-start" wrap={isMobile ? 'wrap' : 'nowrap'} gap="md">
-      {!isMobile && <Box w={300} style={{ flexShrink: 0 }}>{filterPanel}</Box>}
-      <Stack gap="md" style={{ flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined }}>
+      <Stack gap="md" style={{ flex: 1, minWidth: 0, width: '100%' }}>
       {/* Search Section */}
+      {(searchVisible || tagsVisible) && (
       <Stack gap="xs">
+        {searchVisible && (
         <Group align="flex-end" wrap="nowrap" gap={{ base: 'xs', sm: 'md' }}>
           <TextInput
             style={{ flex: 1 }}
@@ -665,41 +671,14 @@ export default function NotesPanel({ registerActions } = {}) {
             }}
             size={inputSize}
           />
-          <Button onClick={runSearch} size={controlSize}>Search</Button>
+          <Button onClick={runSearch} size={controlSize}>Text Search</Button>
           <Button variant="default" onClick={clearSearch} disabled={!activeSearch && !search.q} size={controlSize}>
             Clear
           </Button>
         </Group>
+        )}
 
-        {/* Search Filters - Collapsible on mobile */}
-        {isMobile ? (
-          <>
-            <Button
-              variant="subtle"
-              size="xs"
-              onClick={() => setSearchExpanded(!searchExpanded)}
-              rightSection={searchExpanded ? <IconX size={14} /> : <IconMenu2 size={14} />}
-            >
-              Search Options
-            </Button>
-            {searchExpanded && (
-              <Group gap="lg">
-                <Checkbox
-                  label="Search Titles"
-                  checked={search.searchTitles}
-                  onChange={(e) => setSearch({ ...search, searchTitles: e.currentTarget.checked })}
-                  size="sm"
-                />
-                <Checkbox
-                  label="Search Content"
-                  checked={search.searchContent}
-                  onChange={(e) => setSearch({ ...search, searchContent: e.currentTarget.checked })}
-                  size="sm"
-                />
-              </Group>
-            )}
-          </>
-        ) : (
+        {searchVisible && (
           <Group gap="lg">
             <Checkbox
               label="Search Titles"
@@ -713,19 +692,8 @@ export default function NotesPanel({ registerActions } = {}) {
             />
           </Group>
         )}
-        {isMobile && (
-          <>
-            <Button
-              variant="light"
-              size="xs"
-              onClick={() => setFiltersOpen((o) => !o)}
-              aria-expanded={filtersOpen}
-              rightSection={activeFilterCount > 0 ? <Badge size="xs" circle>{activeFilterCount}</Badge> : null}
-            >
-              {filtersOpen ? 'Hide filters' : 'Filters'}
-            </Button>
-            <Collapse in={filtersOpen}>{filterPanel}</Collapse>
-          </>
+        {tagsVisible && (
+          <Collapse in={tagsVisible}>{filterPanel}</Collapse>
         )}
 
         {activeFilterCount > 0 && (
@@ -739,6 +707,7 @@ export default function NotesPanel({ registerActions } = {}) {
           </Group>
         )}
       </Stack>
+      )}
 
       {/* Alerts */}
       {error && (
@@ -813,7 +782,6 @@ export default function NotesPanel({ registerActions } = {}) {
       )}
 
       </Stack>
-      </Group>
 
       {/* Edit/Create Modal */}
       <Modal
