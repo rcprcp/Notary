@@ -25,14 +25,14 @@ export default function App({ themeColor, onThemeChange, currentUser, onLogin, o
               order={1}
               size="h3"
               style={{ cursor: 'pointer' }}
-              onClick={() => navigate('/notes')}
+              onClick={() => { navigate('/notes'); actions?.onReset?.(); }}
             >
               NoteArray
             </Title>
             <Button
               variant="subtle"
               leftSection={<IconNote size={16} />}
-              onClick={() => navigate('/notes')}
+              onClick={() => { navigate('/notes'); actions?.onReset?.(); }}
             >
               Notes
             </Button>

@@ -236,6 +236,7 @@ export default function NotesPanel({ registerActions } = {}) {
   // Search that is currently applied to the list (null = no active search)
   const [activeSearch, setActiveSearch] = useState(null)
   const [helpOpened, setHelpOpened] = useState(false)
+  const [createMode, setCreateMode] = useState(false)
   const [searchExpanded, setSearchExpanded] = useState(false)
 
   // Advanced filters (persisted), saved searches (persisted) and the unfiltered note list
@@ -278,6 +279,20 @@ export default function NotesPanel({ registerActions } = {}) {
 
   const reload = () => load(activeSearch, filters)
 
+  const resetAll = () => {
+    clearAutoSaveTimer()
+    setSearchVisible(false)
+    setTagsVisible(false)
+    setImportModalOpened(false)
+    setCreateMode(false)
+    setOpened(false)
+    setActiveSearch(null)
+    setSearch(DEFAULT_SEARCH)
+    setFilters({ ...DEFAULT_FILTERS })
+    setError(null)
+    setFormError(null)
+  }
+
   const openCreate = () => {
     clearAutoSaveTimer()
     baselineRef.current = null
@@ -287,7 +302,8 @@ export default function NotesPanel({ registerActions } = {}) {
     setEditingNote(null)
     setForm(EMPTY_FORM)
     setFormError(null)
-    setOpened(true)
+    setOpened(false)
+    setCreateMode(true)
   }
 
   useEffect(() => writeStorage(FILTERS_KEY, filters), [filters])
@@ -299,6 +315,7 @@ export default function NotesPanel({ registerActions } = {}) {
         onImport: () => setImportModalOpened(true),
         onToggleSearch: () => setSearchVisible((v) => !v),
         onToggleTags: () => setTagsVisible((v) => !v),
+        onReset: resetAll,
         searchOpen: searchVisible,
         tagsOpen: tagsVisible,
         importOpen: importModalOpened,
@@ -507,6 +524,13 @@ export default function NotesPanel({ registerActions } = {}) {
   }
 
   const closeModal = async () => {
+    if (createMode && !editingNote) {
+      clearAutoSaveTimer()
+      setCreateMode(false)
+      setAutoSaveStatus('idle')
+      setFormError(null)
+      return
+    }
     clearAutoSaveTimer()
     await waitForInFlight()
     // Flush any edits still waiting on the debounce timer so nothing typed is lost.
