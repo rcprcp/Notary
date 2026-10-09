@@ -767,7 +767,7 @@ export default function NotesPanel({ registerActions } = {}) {
 
       {/* Notes Display */}
       {(createMode || editMode) ? (
-        <Stack gap="md" style={{ width: '100%' }}>
+        <Stack gap="md" style={{ width: '100%', flex: 1, minWidth: 0 }}>
           {formError && <Alert color="red" withCloseButton onClose={() => setFormError(null)}>{formError}</Alert>}
           <TextInput label="Title" required maxLength={255} value={form.title} error={formError && !form.title.trim()} onChange={(e) => setForm({ ...form, title: e.currentTarget.value })} size={inputSize} />
           {editingNote && <Text size="xs" c="dimmed">Created: {new Date(editingNote.createdAt).toLocaleString()}</Text>}
