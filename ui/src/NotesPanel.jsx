@@ -237,6 +237,7 @@ export default function NotesPanel({ registerActions } = {}) {
   const [activeSearch, setActiveSearch] = useState(null)
   const [helpOpened, setHelpOpened] = useState(false)
   const [createMode, setCreateMode] = useState(false)
+  const [editMode, setEditMode] = useState(false)
   const [searchExpanded, setSearchExpanded] = useState(false)
 
   // Advanced filters (persisted), saved searches (persisted) and the unfiltered note list
@@ -285,6 +286,7 @@ export default function NotesPanel({ registerActions } = {}) {
     setTagsVisible(false)
     setImportModalOpened(false)
     setCreateMode(false)
+    setEditMode(false)
     setOpened(false)
     setActiveSearch(null)
     setSearch(DEFAULT_SEARCH)
@@ -303,6 +305,7 @@ export default function NotesPanel({ registerActions } = {}) {
     setForm(EMPTY_FORM)
     setFormError(null)
     setOpened(false)
+    setEditMode(false)
     setCreateMode(true)
   }
 
@@ -466,7 +469,9 @@ export default function NotesPanel({ registerActions } = {}) {
     setEditingNote(note)
     setForm({ title: note.title || '', content: note.content || '', tags: (note.tags || '').toLowerCase() })
     setFormError(null)
-    setOpened(true)
+    setOpened(false)
+    setCreateMode(false)
+    setEditMode(true)
   }
 
   // Persist pending changes of the note being edited (used by the debounce timer).
@@ -758,11 +763,11 @@ export default function NotesPanel({ registerActions } = {}) {
       )}
 
       {/* Notes Display */}
-      {createMode ? (
+      {(createMode || editMode) ? (
         <Stack gap="md" style={{ width: '100%' }}>
           {formError && <Alert color="red" withCloseButton onClose={() => setFormError(null)}>{formError}</Alert>}
           <TextInput label="Title" required maxLength={255} value={form.title} error={formError && !form.title.trim()} onChange={(e) => setForm({ ...form, title: e.currentTarget.value })} size={inputSize} />
-          <Text size="xs" c="dimmed">Created: —</Text>
+          {editingNote && <Text size="xs" c="dimmed">Created: {new Date(editingNote.createdAt).toLocaleString()}</Text>}
           <div>
             <TextInput label="Tags (space-delimited)" placeholder="joplin important work" maxLength={10000} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.currentTarget.value.toLowerCase() })} size={inputSize} />
             {form.tags && (
@@ -779,7 +784,7 @@ export default function NotesPanel({ registerActions } = {}) {
           </div>
           <AutoSaveStatus status={autoSaveStatus} lastSaved={lastSaved} />
           <Group justify={isMobile ? 'flex-end' : 'space-between'} gap="xs">
-            <Button variant="default" onClick={closeModal} size={inputSize}>Cancel</Button>
+            <Button variant="default" onClick={closeModal} size={inputSize}>{editingNote ? 'Close' : 'Cancel'}</Button>
             <Button onClick={save} loading={saving} size={inputSize}>Create</Button>
           </Group>
         </Stack>
