@@ -1,12 +1,12 @@
 # NoteArray
 
-A modern note-taking application built with **Quarkus** (Java 17), **Panache ORM**, **PostgreSQL**, and a **React** UI with **Vite** and **Mantine**. Works great on desktop, tablet, and mobile devices.
+A modern note-taking application built with **Quarkus** (Java 25), **Panache ORM**, **PostgreSQL**, and a **React** UI with **Vite** and **Mantine**. Works great on desktop, tablet, and mobile devices.
 
 ## Project Structure
 
 ```
 NoteArray/
-├── pom.xml                                    # Maven configuration with Java 17 and Quarkus
+├── pom.xml                                    # Maven configuration with Java 25 and Quarkus
 ├── src/
 │   └── main/
 │       ├── java/com/notearray/
@@ -47,7 +47,7 @@ NoteArray/
 
 ## Prerequisites
 
-- **Java 17** (JDK)
+- **Java 25** (JDK)
 - **Maven 3.8+**
 - **Node.js 18+** and **npm**
 - **PostgreSQL** running locally (or configure DB connection)
@@ -337,6 +337,7 @@ When the backend is running (`mvn quarkus:dev`), you can access the API document
 - **OpenAPI Spec (YAML):** http://localhost:8080/q/openapi
 - **OpenAPI Spec (JSON):** http://localhost:8080/q/openapi?format=json
 - **Swagger UI (Interactive):** http://localhost:8080/q/swagger-ui
+- **Metrics (Prometheus):** http://localhost:8080/q/metrics
 
 The interactive Swagger UI allows you to test all endpoints directly from your browser.
 
@@ -587,13 +588,14 @@ npm run dev
 ## Technologies Used
 
 ### Backend
-- **Quarkus** 3.4.3 – lightweight, fast Java framework
-- **Java** 17 – language runtime
+- **Quarkus** 3.40.1 – lightweight, fast Java framework
+- **Java** 25 – language runtime
 - **Hibernate Panache** – ORM simplification
 - **PostgreSQL** JDBC driver – database connectivity
 - **Flyway** – database schema versioning and migration
 - **BCrypt** (Quarkus Elytron) – password hashing and verification
 - **SmallRye OpenAPI** – automatic OpenAPI 3.0 spec generation and Swagger UI
+- **Micrometer Prometheus** – application metrics export
 - **Jackson** – JSON processing for import parsing
 
 ### Frontend
