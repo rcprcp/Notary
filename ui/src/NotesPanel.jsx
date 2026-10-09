@@ -781,7 +781,7 @@ export default function NotesPanel({ registerActions } = {}) {
               </Group>
             )}
           </div>
-          <div>
+          <div style={{ width: "100%" }}>
             <Text fw={500} size="sm" mb={6}>Content</Text>
             <RichTextEditor value={form.content} onChange={(c) => setForm((prev) => ({ ...prev, content: c }))} />
           </div>
