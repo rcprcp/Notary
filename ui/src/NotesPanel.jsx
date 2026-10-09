@@ -276,6 +276,20 @@ export default function NotesPanel({ registerActions } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, filters])
 
+  const reload = () => load(activeSearch, filters)
+
+  const openCreate = () => {
+    clearAutoSaveTimer()
+    baselineRef.current = null
+    autoSavedRef.current = false
+    setAutoSaveStatus('idle')
+    setLastSaved(null)
+    setEditingNote(null)
+    setForm(EMPTY_FORM)
+    setFormError(null)
+    setOpened(true)
+  }
+
   useEffect(() => writeStorage(FILTERS_KEY, filters), [filters])
   useEffect(() => {
     if (registerActions) {
@@ -291,8 +305,6 @@ export default function NotesPanel({ registerActions } = {}) {
     }
   }, [registerActions, openCreate, reload, searchVisible, tagsVisible])
   useEffect(() => writeStorage(SAVED_SEARCHES_KEY, savedSearches), [savedSearches])
-
-  const reload = () => load(activeSearch, filters)
 
   const updateFilters = (patch) => {
     if (patch.collection === 'stale') setSort({ field: 'updatedAt', dir: 'asc' })
@@ -420,17 +432,7 @@ export default function NotesPanel({ registerActions } = {}) {
     return body
   }
 
-  const openCreate = () => {
-    clearAutoSaveTimer()
-    baselineRef.current = null
-    autoSavedRef.current = false
-    setAutoSaveStatus('idle')
-    setLastSaved(null)
-    setEditingNote(null)
-    setForm(EMPTY_FORM)
-    setFormError(null)
-    setOpened(true)
-  }
+
 
   // Selecting a note shows its title, tags and content for editing.
   const openEdit = (note) => {
