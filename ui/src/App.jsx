@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Box, Container, Group, Button, Stack, Title } from '@mantine/core'
 import { IconUpload } from '@tabler/icons-react'
@@ -10,6 +10,7 @@ import UserMenu from './UserMenu'
 export default function App({ themeColor, onThemeChange, currentUser, onLogin, onLogout }) {
   const navigate = useNavigate()
   const [actions, setActions] = useState(null)
+  const handleRegister = useCallback((a) => setActions(a), [])
 
   if (!currentUser) {
     return <LoginPage onLogin={onLogin} />
@@ -61,7 +62,7 @@ export default function App({ themeColor, onThemeChange, currentUser, onLogin, o
 
       <Container size="lg" my="md" style={{ flex: 1 }}>
         <Routes>
-          <Route path="/notes" element={<NotesPanel registerActions={(a) => setActions(a)} />} />
+          <Route path="/notes" element={<NotesPanel registerActions={handleRegister} />} />
           <Route path="*" element={<Navigate to="/notes" replace />} />
         </Routes>
       </Container>

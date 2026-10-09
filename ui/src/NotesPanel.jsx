@@ -303,7 +303,7 @@ export default function NotesPanel({ registerActions } = {}) {
         tagsOpen: tagsVisible,
       })
     }
-  }, [registerActions, openCreate, reload, searchVisible, tagsVisible])
+  }, [registerActions])
   useEffect(() => writeStorage(SAVED_SEARCHES_KEY, savedSearches), [savedSearches])
 
   const updateFilters = (patch) => {
