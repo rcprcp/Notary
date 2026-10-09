@@ -769,10 +769,10 @@ export default function NotesPanel({ registerActions } = {}) {
       {(createMode || editMode) ? (
         <Stack gap="md" style={{ width: '100%', flex: 1, minWidth: 0 }}>
           {formError && <Alert color="red" withCloseButton onClose={() => setFormError(null)}>{formError}</Alert>}
-          <TextInput label="Title" required maxLength={255} value={form.title} error={formError && !form.title.trim()} onChange={(e) => setForm({ ...form, title: e.currentTarget.value })} size={inputSize} />
+          <TextInput label="Title" w="100%" required maxLength={255} value={form.title} error={formError && !form.title.trim()} onChange={(e) => setForm({ ...form, title: e.currentTarget.value })} size={inputSize} />
           {editingNote && <Text size="xs" c="dimmed">Created: {new Date(editingNote.createdAt).toLocaleString()}</Text>}
           <div>
-            <TextInput label="Tags (space-delimited)" placeholder="joplin important work" maxLength={10000} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.currentTarget.value.toLowerCase() })} size={inputSize} />
+            <TextInput label="Tags (space-delimited)" w="100%" placeholder="joplin important work" maxLength={10000} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.currentTarget.value.toLowerCase() })} size={inputSize} />
             {form.tags && (
               <Group gap="xs" mt="xs">
                 {form.tags.split(/\s+/).filter((t) => t.length > 0).map((t, i) => (
