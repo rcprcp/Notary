@@ -685,7 +685,7 @@ export default function NotesPanel({ registerActions } = {}) {
   )
 
   return (
-    <Stack gap="md" p={{ base: 'sm', sm: 'md' }}>
+    <Stack gap="md" p={{ base: 'sm', sm: 'md' }} style={{ width: '100%' }}>
       {/* Header */}
 
 
