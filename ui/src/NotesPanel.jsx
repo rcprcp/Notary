@@ -683,7 +683,7 @@ export default function NotesPanel({ registerActions } = {}) {
 
       <Stack gap="md" style={{ flex: 1, minWidth: 0, width: '100%' }}>
       {/* Search Section */}
-      {(searchVisible || tagsVisible) && (
+      {!createMode && (searchVisible || tagsVisible) && (
       <Stack gap="xs">
         {searchVisible && (
         <Group align="flex-end" wrap="nowrap" gap={{ base: 'xs', sm: 'md' }}>
@@ -723,7 +723,7 @@ export default function NotesPanel({ registerActions } = {}) {
           <Collapse in={tagsVisible}>{filterPanel}</Collapse>
         )}
 
-        {activeFilterCount > 0 && (
+        {!createMode && activeFilterCount > 0 && (
           <Group gap="xs" aria-label="Active filters">
             <Badge variant="outline" size="lg">{activeFilterCount} active filter{activeFilterCount === 1 ? '' : 's'}</Badge>
             {activeSearch && <FilterBadge label={`Search: ${activeSearch.q.trim()}`} onClear={clearSearch} />}
@@ -743,7 +743,7 @@ export default function NotesPanel({ registerActions } = {}) {
         </Alert>
       )}
 
-      {activeFilterCount > 0 && (
+      {!createMode && activeFilterCount > 0 && (
         <Stack gap="xs">
           {activeSearch && (
             <Text fw={600} size={isMobile ? 'md' : 'lg'}>
