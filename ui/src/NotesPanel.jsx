@@ -759,7 +759,7 @@ export default function NotesPanel({ registerActions } = {}) {
 
       {/* Notes Display */}
       {createMode ? (
-        <Stack gap="md">
+        <Stack gap="md" style={{ width: '100%' }}>
           {formError && <Alert color="red" withCloseButton onClose={() => setFormError(null)}>{formError}</Alert>}
           <TextInput label="Title" required maxLength={255} value={form.title} error={formError && !form.title.trim()} onChange={(e) => setForm({ ...form, title: e.currentTarget.value })} size={inputSize} />
           <Text size="xs" c="dimmed">Created: —</Text>
