@@ -12,7 +12,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from 'tiptap-markdown'
 import { notesApi } from './api'
-import FilterPanel, { DEFAULT_FILTERS, FilterBadge, STALE_DAYS, buildApiFilters, describeFilters } from './FilterPanel'
+import FilterPanel, { DEFAULT_FILTERS, buildApiFilters, describeFilters } from './FilterPanel'
 
 const EMPTY_FORM = { title: '', content: '', tags: '' }
 const DEFAULT_SEARCH = { q: '', searchTitles: true, searchContent: true }
@@ -345,7 +345,7 @@ export default function NotesPanel({ registerActions } = {}) {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const staleBefore = new Date(today)
-    staleBefore.setDate(staleBefore.getDate() - STALE_DAYS)
+    staleBefore.setDate(staleBefore.getDate() - 30)
     return {
       untagged: allNotes.filter((n) => !(n.tags || '').trim()).length,
       pinned: allNotes.filter((n) => n.pinned).length,
@@ -734,9 +734,9 @@ export default function NotesPanel({ registerActions } = {}) {
         {!(createMode || editMode) && activeFilterCount > 0 && (
           <Group gap="xs" aria-label="Active filters">
             <Badge variant="outline" size="lg">{activeFilterCount} active filter{activeFilterCount === 1 ? '' : 's'}</Badge>
-            {activeSearch && <FilterBadge label={`Search: ${activeSearch.q.trim()}`} onClear={clearSearch} />}
+            {activeSearch && <Badge variant="filled" size="lg" rightSection={<ActionIcon size="xs" variant="transparent" color="white" onClick={clearSearch} aria-label={`Clear search`}><IconX size={12} /></ActionIcon>} style={{ textTransform: "none" }}>{`Search: ${activeSearch.q.trim()}`}</Badge>}
             {activeFilterItems.map((item) => (
-              <FilterBadge key={item.key} label={item.label} onClear={() => updateFilters(item.clear)} />
+              <Badge key={item.key} variant="filled" size="lg" rightSection={<ActionIcon size="xs" variant="transparent" color="white" onClick={() => updateFilters(item.clear)} aria-label={`Clear ${item.label}`}><IconX size={12} /></ActionIcon>} style={{ textTransform: "none" }}>{item.label}</Badge>
             ))}
             <Button variant="subtle" size="xs" onClick={clearAll}>Clear all filters</Button>
           </Group>
