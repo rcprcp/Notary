@@ -810,7 +810,7 @@ export default function NotesPanel({ registerActions } = {}) {
           </div>
           <div style={{ width: "100%" }}>
             <Text fw={500} size="sm" mb={6}>Content</Text>
-            <RichTextEditor style={{ width: "100%" }} value={form.content} onChange={(c) => setForm((prev) => ({ ...prev, content: c }))} />
+            <MarkdownEditor value={form.content} onChange={(c) => setForm((prev) => ({ ...prev, content: c }))} />
           </div>
           <AutoSaveStatus status={autoSaveStatus} lastSaved={lastSaved} />
           <Group justify={isMobile ? 'flex-end' : 'space-between'} gap="xs">
