@@ -59,7 +59,7 @@ export default function App({ themeColor, onThemeChange, currentUser, onLogin, o
         </Group>
       </Box>
 
-      <Container size="lg" my="md" style={{ flex: 1 }}>
+      <Container fluid my="md" style={{ flex: 1, width: "100%", maxWidth: "100%" }}>
         <Routes>
           <Route path="/notes" element={<NotesPanel registerActions={handleRegister} />} />
           <Route path="*" element={<Navigate to="/notes" replace />} />

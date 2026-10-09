@@ -795,14 +795,14 @@ export default function NotesPanel({ registerActions } = {}) {
         <Text c="dimmed" ta="center" py="xl">{activeFilterCount > 0 ? 'No notes match your search or filters.' : 'You have no notes yet.'}</Text>
       ) : isMobile ? (
         // Mobile: Card view
-        <SimpleGrid cols={1} spacing="md">
+        <SimpleGrid cols={1} spacing="md" style={{ width: "100%" }}>
           {sortedNotes.map((n) => (
             <NoteCard key={n.id} note={n} onEdit={openEdit} onDelete={remove} onTogglePin={togglePin} />
           ))}
         </SimpleGrid>
       ) : (
         // Desktop: Table view
-        <Table striped highlightOnHover withTableBorder>
+        <Table striped highlightOnHover withTableBorder style={{ width: "100%" }}>
           <Table.Thead>
             <Table.Tr>
               <SortableTh label="Created" field="createdAt" sort={sort} onSort={toggleSort} />
