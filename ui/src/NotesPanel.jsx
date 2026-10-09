@@ -860,7 +860,7 @@ export default function NotesPanel({ registerActions } = {}) {
         <Stack>
           {importResult && (
             <Alert
-              color={importResult.errors === 0 ? 'green' : 'yellow'}
+              color={importResult.errors === 0 ? 'primary' : 'yellow'}
               withCloseButton
               onClose={() => setImportResult(null)}
             >

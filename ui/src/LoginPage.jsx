@@ -75,7 +75,7 @@ export default function LoginPage({ onLogin }) {
   return (
     <Container size="xs" my={40}>
       <Card withBorder shadow="sm" p="lg" radius="md">
-        <Title order={2} mb="md">{mode === 'login' ? 'Login' : 'Create Account'}</Title>
+        <Title order={2} mb="md" c="red">{mode === 'login' ? 'Login' : 'Create Account'}</Title>
 
         {error && (
           <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>
@@ -121,7 +121,7 @@ export default function LoginPage({ onLogin }) {
             />
           )}
 
-          <Button onClick={mode === 'login' ? handleLogin : handleSignup} loading={loading} fullWidth>
+          <Button onClick={mode === 'login' ? handleLogin : handleSignup} loading={loading} fullWidth color="red">
             {mode === 'login' ? 'Login' : 'Create Account'}
           </Button>
 
