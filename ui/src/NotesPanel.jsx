@@ -43,7 +43,7 @@ const AUTOSAVE_DELAY_MS = 2000
 function MarkdownEditor({ value, onChange }) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      (StarterKit.default || StarterKit),
       Underline,
       Link.configure({
         openOnClick: false,
