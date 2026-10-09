@@ -79,7 +79,7 @@ function MarkdownEditor({ value, onChange }) {
   }, [editor, value])
 
   return (
-    <RichTextEditor editor={editor}>
+    <RichTextEditor editor={editor} style={{ width: "100%" }}>
       <RichTextEditor.Toolbar sticky stickyOffset={60}>
         <RichTextEditor.ControlsGroup>
           <RichTextEditor.Bold />
@@ -109,7 +109,7 @@ function MarkdownEditor({ value, onChange }) {
         </RichTextEditor.ControlsGroup>
       </RichTextEditor.Toolbar>
 
-      <RichTextEditor.Content style={{ minHeight: 300, maxHeight: 500, overflowY: 'auto', border: '1px solid var(--mantine-color-gray-3)' }} />
+      <RichTextEditor.Content style={{ minHeight: 400, maxHeight: '70vh', overflowY: 'auto', border: '1px solid var(--mantine-color-gray-3)', width: '100%' }} />
     </RichTextEditor>
   )
 }
