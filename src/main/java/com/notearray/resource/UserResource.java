@@ -48,8 +48,7 @@ public class UserResource {
 
     /** Get the authenticated user from the session cookie. Returns null if not logged in. */
     private User getAuthenticatedUser() {
-        UUID userId = sessions.resolve(headers.getCookies().get(SessionService.COOKIE_NAME));
-        return userId == null ? null : User.findById(userId);
+        return sessions.resolve(headers.getCookies().get(SessionService.COOKIE_NAME));
     }
 
     /**
@@ -82,7 +81,7 @@ public class UserResource {
                     .entity("invalid email or password").build();
         }
         user.lastLogin = Instant.now();
-        String token = sessions.create(user.id);
+        String token = sessions.create(user);
         return Response.ok(user)
                 .header("Set-Cookie", sessions.cookieHeader(token))
                 .build();
@@ -184,13 +183,25 @@ public class UserResource {
             }
             user.email = req.email();
         }
-        if (!isBlank(req.password())) {
+        boolean passwordChanged = !isBlank(req.password());
+        if (passwordChanged) {
             user.passwordHash = BcryptUtil.bcryptHash(req.password());
         }
         if (!isBlank(req.themeColor())) {
             user.themeColor = req.themeColor();
         }
-        return Response.ok(user).build();
+
+        Response.ResponseBuilder response = Response.ok(user);
+        if (passwordChanged) {
+            // A password change invalidates every existing session for the user.
+            sessions.invalidateAllForUser(user.id);
+            if (caller.id.equals(user.id)) {
+                // Keep the caller signed in on this device with a brand-new token.
+                String token = sessions.create(user);
+                response.header("Set-Cookie", sessions.cookieHeader(token));
+            }
+        }
+        return response.build();
     }
 
     @DELETE

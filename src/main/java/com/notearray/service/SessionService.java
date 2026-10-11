@@ -1,18 +1,27 @@
 package com.notearray.service;
 
+import com.notearray.entity.Session;
+import com.notearray.entity.User;
+import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.core.Cookie;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.HexFormat;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /**
  * Server-side login sessions, addressed by an HttpOnly, SameSite=Strict cookie.
- * The token is a random UUID; user ids are only ever stored server side.
- * Sessions live in memory, so restarting the application signs everyone out.
+ *
+ * <p>Sessions are persisted in the {@code sessions} table through Hibernate/Panache, so they
+ * survive application restarts and are shared across multiple application instances that use
+ * the same database. A user may be signed in on many devices at once; each login is its own row.
+ * Only a SHA-256 hash of the token is stored, never the raw token.
  */
 @ApplicationScoped
 public class SessionService {
@@ -22,41 +31,75 @@ public class SessionService {
 
     private static final Duration SESSION_TTL = Duration.ofDays(7);
 
-    private record Session(UUID userId, Instant expiresAt) {}
+    /** Add the Secure attribute to session cookies; enable behind TLS (defaults on in prod). */
+    @ConfigProperty(name = "notearray.session.cookie-secure", defaultValue = "false")
+    boolean cookieSecure;
 
-    private final Map<String, Session> sessions = new ConcurrentHashMap<>();
-
-    /** Create a session for the user and return the token to put in the cookie. */
-    public String create(UUID userId) {
-        purgeExpired();
+    /**
+     * Create a new session for the user and return the raw token to put in the cookie.
+     * Existing sessions for the user are left intact, so other devices stay signed in.
+     * The caller must run inside a transaction so the row is flushed.
+     */
+    @Transactional
+    public String create(User user) {
         String token = UUID.randomUUID().toString();
-        sessions.put(token, new Session(userId, Instant.now().plus(SESSION_TTL)));
+        Instant now = Instant.now();
+
+        Session session = new Session();
+        session.tokenHash = hash(token);
+        session.userId = user.id;
+        session.createdAt = now;
+        session.expiresAt = now.plus(SESSION_TTL);
+        session.persist();
+
         return token;
     }
 
-    /** Return the user id bound to the cookie, or null when the cookie is missing, unknown or expired. */
-    public UUID resolve(Cookie cookie) {
+    /**
+     * Return the user bound to the cookie, or {@code null} when the cookie is missing, unknown
+     * or expired. An expired session is deleted as a side effect.
+     */
+    @Transactional
+    public User resolve(Cookie cookie) {
         String token = token(cookie);
         if (token == null) {
             return null;
         }
-        Session session = sessions.get(token);
+        Session session = Session.findByTokenHash(hash(token));
         if (session == null) {
             return null;
         }
-        if (session.expiresAt().isBefore(Instant.now())) {
-            sessions.remove(token);
+        if (session.expiresAt.isBefore(Instant.now())) {
+            session.delete();
             return null;
         }
-        return session.userId();
+        return User.findById(session.userId);
     }
 
-    /** Drop the session bound to the cookie, if any. */
+    /** Drop the session bound to the cookie, if any (signs out one device only). */
+    @Transactional
     public void invalidate(Cookie cookie) {
         String token = token(cookie);
-        if (token != null) {
-            sessions.remove(token);
+        if (token == null) {
+            return;
         }
+        Session session = Session.findByTokenHash(hash(token));
+        if (session != null) {
+            session.delete();
+        }
+    }
+
+    /** Drop every session for a user (e.g. after a password change). */
+    @Transactional
+    public void invalidateAllForUser(UUID userId) {
+        Session.deleteByUserId(userId);
+    }
+
+    /** Periodically remove expired sessions so the table does not accumulate dead rows. */
+    @Transactional
+    @Scheduled(every = "1h")
+    void purgeExpiredSessions() {
+        Session.deleteExpired();
     }
 
     /** Set-Cookie header that hands the token to the browser. */
@@ -64,7 +107,8 @@ public class SessionService {
         return COOKIE_NAME + "=" + token
                 + "; Path=/"
                 + "; Max-Age=" + SESSION_TTL.toSeconds()
-                + "; HttpOnly; SameSite=Strict";
+                + "; HttpOnly; SameSite=Strict"
+                + secureAttribute();
     }
 
     /** Set-Cookie header that removes the cookie from the browser. */
@@ -72,7 +116,12 @@ public class SessionService {
         return COOKIE_NAME + "="
                 + "; Path=/"
                 + "; Max-Age=0"
-                + "; HttpOnly; SameSite=Strict";
+                + "; HttpOnly; SameSite=Strict"
+                + secureAttribute();
+    }
+
+    private String secureAttribute() {
+        return cookieSecure ? "; Secure" : "";
     }
 
     private static String token(Cookie cookie) {
@@ -82,12 +131,12 @@ public class SessionService {
         return cookie.getValue();
     }
 
-    private void purgeExpired() {
-        Instant now = Instant.now();
-        for (Iterator<Map.Entry<String, Session>> it = sessions.entrySet().iterator(); it.hasNext();) {
-            if (it.next().getValue().expiresAt().isBefore(now)) {
-                it.remove();
-            }
+    private static String hash(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm unavailable", e);
         }
     }
 }

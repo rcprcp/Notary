@@ -10,13 +10,17 @@ NoteArray/
 ├── src/
 │   └── main/
 │       ├── java/com/notearray/
+│       │   ├── NoteArrayApplication.java       # JAX-RS application root (@ApplicationPath "/")
 │       │   ├── entity/
 │       │   │   ├── BaseEntity.java            # Base class with UUID id and timestamps
 │       │   │   ├── User.java                  # User entity with unique name/email, theme_color, last_login, superuser flag
-│       │   │   └── Note.java                  # Note entity with title, markdown content, and space-delimited tags
-│       │   └── resource/
-│       │       ├── UserResource.java          # REST endpoints for users (CRUD + login/logout)
-│       │       └── NoteResource.java          # REST endpoints for notes (CRUD + search + filter + import)
+│       │   │   ├── Note.java                  # Note entity with title, markdown content, and space-delimited tags
+│       │   │   └── Session.java               # Session entity backing persistent logins (token hash, user, expiry)
+│       │   ├── resource/
+│       │   │   ├── UserResource.java          # REST endpoints for users (CRUD + login/logout)
+│       │   │   └── NoteResource.java          # REST endpoints for notes (CRUD + search + filter + import)
+│       │   └── service/
+│       │       └── SessionService.java        # Persisted session create/resolve/invalidate + scheduled purge
 │       └── resources/
 │           ├── application.properties         # Quarkus config (DB, Flyway, OpenAPI, sessions)
 │           └── db/migration/
@@ -28,7 +32,9 @@ NoteArray/
 │               ├── V1.0.5__insert_initial_user.sql
 │               ├── V1.0.6__add_fulltext_search_to_notes.sql
 │               ├── V1.0.7__add_tags_to_notes.sql
-│               └── V1.0.8__add_pinned_to_notes.sql
+│               ├── V1.0.8__add_pinned_to_notes.sql
+│               ├── V1.0.9__add_session_to_users.sql
+│               └── V1.1.0__create_sessions_table.sql
 ├── ui/                                        # React + Vite frontend (mobile-responsive)
 │   ├── src/
 │   │   ├── App.jsx                            # Main app shell with routing and logout
@@ -38,6 +44,10 @@ NoteArray/
 │   │   ├── NotesPanel.jsx                     # Note management UI with rich text editor, tags, search, import, auto-save, and responsive design
 │   │   ├── FilterPanel.jsx                    # Advanced search and filtering UI
 │   │   ├── ThemeButton.jsx                    # Theme color picker
+│   │   ├── UserMenu.jsx                       # Top-right personal settings menu (profile, theme, logout)
+│   │   ├── UsersPanel.jsx                     # Superuser user-management table (list/create/edit/delete)
+│   │   ├── CurrentUserSelect.jsx              # Dropdown to switch the acting user
+│   │   ├── OpenApiButton.jsx                  # Modal that fetches and shows the OpenAPI spec
 │   │   └── index.css                          # Mobile-first responsive styles
 │   ├── vite.config.js                         # Vite configuration
 │   ├── index.html                             # HTML template with viewport meta
@@ -139,19 +149,40 @@ UPDATE users SET superuser = TRUE WHERE email = 'mickey@mickey.com';
 
 Indexed on `owner_id` for efficient owner-based queries. GIN indexes on `title_tsv` and `content_tsv` for fast full-text search.
 
+### `sessions` Table
+- `token_hash` (VARCHAR 64, primary key, SHA-256 hash of the session token; the raw token is never stored)
+- `user_id` (UUID, foreign key → users.id, ON DELETE CASCADE)
+- `created_at` (TIMESTAMP, when the login was created)
+- `expires_at` (TIMESTAMP, when the login expires)
+- Indexed on `user_id` and `expires_at`
+- A user may have many rows, i.e. be signed in on multiple devices at once
+
 ## Authentication & Session Management
 
 ### How It Works
 
 1. **Login:** POST `/api/users/login` with email and password sets an HttpOnly, SameSite=Strict session cookie.
-2. **Session:** The session cookie is automatically included in all subsequent requests; the server extracts the user ID from the session.
-3. **Logout:** POST `/api/users/logout` invalidates the session cookie.
+2. **Session:** The session cookie is automatically included in all subsequent requests; the server looks up the owning user from the persisted session.
+3. **Logout:** POST `/api/users/logout` clears the persisted session and expires the cookie.
 4. **Protected Routes:** All endpoints require authentication. Unauthenticated requests return **401**.
+
+Sessions are **persisted in a dedicated `sessions` table in PostgreSQL** (via Hibernate Panache),
+so they survive application restarts and are shared across multiple application instances that use
+the same database. A user may be **signed in on multiple devices at once**; each login is its own
+row, so signing out on one device leaves the others signed in.
+
+Only a **SHA-256 hash** of the token is stored in the database; the raw token lives solely in
+the browser cookie, so a leaked database snapshot cannot be replayed. Sessions expire after
+**7 days**; expired sessions are rejected and deleted on access, and a scheduled job
+(`quarkus-scheduler`, hourly) also purges stale rows. Changing a password invalidates **all** of
+that user's sessions; when you change your own password you stay signed in on the current device
+with a freshly rotated token.
 
 ### Session Cookies
 
 - **HttpOnly:** Cannot be accessed by JavaScript; protects against XSS attacks.
 - **SameSite=Strict:** Prevents CSRF attacks.
+- **Secure:** Added in the `prod` profile by default (`notearray.session.cookie-secure=true`). Requires HTTPS; set it to `false` if you run the production JAR over plain HTTP (e.g. LAN testing).
 - **Automatic:** Handled by the browser; no manual token management needed.
 
 ## Authorization & Access Control
@@ -197,7 +228,8 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
 - `POST /api/users/logout` – Invalidate session and log out
   - **Request body:** (empty)
   - **Response:** 204 No Content
-  - Invalidates the session cookie
+  - Deletes the session row and expires the session cookie
+  - Only signs out the current device; other sessions for the same user remain active
 
 - `GET /api/users/me` – Get the current authenticated user
   - **Response:** User object (password hash and superuser flag not returned)
@@ -228,6 +260,7 @@ UPDATE users SET superuser = FALSE WHERE email = 'user@example.com';
   - Returns 404 if user doesn't exist or caller lacks permission
   - Returns 409 if new name or email is already in use
   - Superusers can update any user; regular users can only update themselves
+  - Changing the password invalidates **all** of that user's sessions; when you change your own password you stay signed in on the current device with a freshly rotated token
 
 - `DELETE /api/users/{id}` – Delete a user
   - **Response:** 204 No Content
@@ -505,12 +538,12 @@ Output: `src/main/resources/META-INF/resources/` (consumed by Quarkus)
 mvn clean package -DskipTests
 ```
 
-Output: `target/notearray-1.0.0-SNAPSHOT-runner.jar`
+Output: `target/quarkus-app/` (Quarkus fast-jar layout)
 
 ### Run the JAR
 
 ```bash
-java -jar target/notearray-1.0.0-SNAPSHOT-runner.jar
+java -jar target/quarkus-app/quarkus-run.jar
 ```
 
 The app will be available at `http://localhost:8080` with both the backend API and the built UI.
@@ -518,6 +551,7 @@ The app will be available at `http://localhost:8080` with both the backend API a
 ### Mobile Deployment
 - The app is fully responsive and works on mobile devices
 - Serve on your network to access from phones/tablets: `http://<your-ip>:3000` (dev) or `http://<your-ip>:8080` (production)
+- The production build marks the session cookie `Secure` (HTTPS only); for plain-HTTP LAN access, run with `-Dnotearray.session.cookie-secure=false`
 - Test on multiple devices to ensure optimal experience
 
 ## Development Workflow
@@ -572,7 +606,7 @@ npm run dev
 - **Theme persistence:** The selected theme is saved to your user record in the database and restored on login.
 - **Note sorting:** Notes are sorted by creation time (newest first) by default. Click any column header in the Notes table to sort by that field (desktop only; mobile cards maintain date sort).
 - **Login tracking:** Each successful login via `POST /api/users/login` updates the user's `last_login` timestamp.
-- **Session security:** Session cookies are HttpOnly and SameSite=Strict; the browser handles them automatically.
+- **Session security:** Sessions are stored (SHA-256 hashed) in the `sessions` table, so they survive restarts and allow multiple concurrent logins; cookies are HttpOnly and SameSite=Strict (plus Secure in `prod`).
 - **Markdown in notes:** Content is stored as markdown, so you can export, version control, and sync notes easily.
 - **Tags and search:** Tags are space-delimited and searchable via the full-text search feature and tag filters.
 - **Importing notes:** Use the Import feature to migrate notes from Joplin or upload individual markdown files. Imports automatically preserve metadata and convert folder structures to tags.
@@ -596,6 +630,7 @@ npm run dev
 - **BCrypt** (Quarkus Elytron) – password hashing and verification
 - **SmallRye OpenAPI** – automatic OpenAPI 3.0 spec generation and Swagger UI
 - **Micrometer Prometheus** – application metrics export
+- **Quarkus Scheduler** – periodic cleanup of expired sessions
 - **Jackson** – JSON processing for import parsing
 
 ### Frontend

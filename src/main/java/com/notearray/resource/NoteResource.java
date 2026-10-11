@@ -56,8 +56,7 @@ public class NoteResource {
 
     /** Get the authenticated user from the session cookie. Returns null if not logged in. */
     private User getAuthenticatedUser() {
-        UUID userId = sessions.resolve(headers.getCookies().get(SessionService.COOKIE_NAME));
-        return userId == null ? null : User.findById(userId);
+        return sessions.resolve(headers.getCookies().get(SessionService.COOKIE_NAME));
     }
 
     /**
